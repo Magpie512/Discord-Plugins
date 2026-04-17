@@ -6,7 +6,6 @@
 
 import { addContextMenuPatch, NavContextMenuPatchCallback, removeContextMenuPatch } from "@api/ContextMenu";
 import { definePluginSettings } from "@api/Settings";
-import { makeRange } from "@components/PluginSettings/components";
 import definePlugin, { OptionType } from "@utils/types";
 import { Menu } from "@webpack/common";
 
@@ -15,19 +14,19 @@ const settings = definePluginSettings({
         type: OptionType.SLIDER,
         description: "Default popout width (px)",
         default: 480,
-        markers: makeRange(240, 1280, 80),
+        markers: [240, 320, 400, 480, 560, 640, 720, 800, 960, 1280],
     },
     height: {
         type: OptionType.SLIDER,
         description: "Default popout height (px)",
         default: 270,
-        markers: makeRange(135, 720, 45),
+        markers: [135, 180, 225, 270, 360, 450, 540, 720],
     },
     opacity: {
         type: OptionType.SLIDER,
         description: "Popout background opacity (0–100)",
         default: 100,
-        markers: makeRange(10, 100, 10),
+        markers: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
     },
     alwaysOnTop: {
         type: OptionType.BOOLEAN,
@@ -94,7 +93,6 @@ function buildPopoutHTML(userId: string, username: string, streamKey: string, op
     box-shadow: 0 8px 32px rgba(0,0,0,0.6);
   }
 
-  /* ── Title bar / drag handle ── */
   #titlebar {
     flex: 0 0 var(--handle-h);
     display: flex;
@@ -150,7 +148,6 @@ function buildPopoutHTML(userId: string, username: string, streamKey: string, op
   #tb-aot:hover { background: rgba(255,255,255,0.1); color: #fff; }
   #tb-aot.active { color: var(--accent); }
 
-  /* ── Video area ── */
   #video-wrap {
     flex: 1;
     position: relative;
@@ -160,14 +157,6 @@ function buildPopoutHTML(userId: string, username: string, streamKey: string, op
     justify-content: center;
   }
 
-  #video-frame {
-    width: 100%; height: 100%;
-    border: none;
-    display: block;
-    background: #111;
-  }
-
-  /* ── Username overlay ── */
   #username-tag {
     position: absolute;
     bottom: 8px; left: 8px;
@@ -189,7 +178,6 @@ function buildPopoutHTML(userId: string, username: string, streamKey: string, op
   }
   ${opts.showUsername ? "" : "#username-tag { display: none; }"}
 
-  /* ── Resize handle ── */
   #resize-corner {
     position: absolute;
     bottom: 0; right: 0;
@@ -205,7 +193,6 @@ function buildPopoutHTML(userId: string, username: string, streamKey: string, op
   }
   #resize-corner:hover { opacity: 0.9; }
 
-  /* ── Loading / error states ── */
   #status {
     position: absolute;
     inset: 0;
@@ -231,28 +218,23 @@ function buildPopoutHTML(userId: string, username: string, streamKey: string, op
 </head>
 <body>
 <div id="container">
-
-  <!-- Title bar -->
   <div id="titlebar">
     <button class="dot" id="btn-close"  title="Close"></button>
     <button class="dot" id="btn-pin"    title="Toggle Always-on-Top"></button>
     <button class="dot" id="btn-expand" title="Fit to screen"></button>
     <span id="tb-title">🎥 ${username}</span>
     <button id="tb-aot" title="Toggle always on top" class="${opts.alwaysOnTop ? "active" : ""}">
-      ${opts.alwaysOnTop ? "📌 AOT" : "📌 AOT"}
+      📌 AOT
     </button>
   </div>
 
-  <!-- Video -->
   <div id="video-wrap">
     <div id="status">
       <div class="spinner"></div>
       <span>Connecting to stream…</span>
     </div>
-    <!-- The actual video element will be cloned/moved here by the injector -->
     <div id="video-slot"></div>
 
-    <!-- Username overlay -->
     <div id="username-tag">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm0 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm0 14c-2.48 0-4.688-1.008-6.3-2.634A7.95 7.95 0 0 1 12 15c2.13 0 4.07.833 5.52 2.193A7.96 7.96 0 0 1 12 20z"/>
@@ -260,7 +242,6 @@ function buildPopoutHTML(userId: string, username: string, streamKey: string, op
       <span>${username}</span>
     </div>
 
-    <!-- Resize grip -->
     <div id="resize-corner">
       <svg width="10" height="10" viewBox="0 0 10 10" fill="rgba(255,255,255,0.7)">
         <path d="M10 0 L10 10 L0 10 Z"/>
@@ -270,58 +251,39 @@ function buildPopoutHTML(userId: string, username: string, streamKey: string, op
 </div>
 
 <script>
-  const userId   = ${JSON.stringify(userId)};
+  const userId    = ${JSON.stringify(userId)};
   const streamKey = ${JSON.stringify(streamKey)};
   let aot = ${opts.alwaysOnTop};
 
-  // ── Close ──────────────────────────────────────────────────────────────────
   document.getElementById("btn-close").addEventListener("click", () => window.close());
 
-  // ── Always-on-top via Electron IPC (if available) ─────────────────────────
   function setAOT(val) {
     aot = val;
-    const btn = document.getElementById("tb-aot");
-    btn.classList.toggle("active", val);
-    // Attempt Electron IPC call exposed by Vencord's preload / DiscordNative
-    try {
-      window.DiscordNative?.window?.setAlwaysOnTop?.(val);
-    } catch (e) {
-      // Not in Electron context, silently ignore
-    }
-    try {
-      // Fallback: postMessage to opener
-      window.opener?.postMessage({ type: "UVP_AOT", userId, val }, "*");
-    } catch (e) {}
+    document.getElementById("tb-aot").classList.toggle("active", val);
+    try { window.DiscordNative?.window?.setAlwaysOnTop?.(val); } catch (_) {}
+    try { window.opener?.postMessage({ type: "UVP_AOT", userId, val }, "*"); } catch (_) {}
   }
 
-  document.getElementById("btn-pin").addEventListener("click", () => setAOT(!aot));
-  document.getElementById("tb-aot").addEventListener("click", () => setAOT(!aot));
+  document.getElementById("btn-pin").addEventListener("click",  () => setAOT(!aot));
+  document.getElementById("tb-aot").addEventListener("click",   () => setAOT(!aot));
 
-  // Apply initial AOT
   if (aot) setAOT(true);
 
-  // ── Expand to available screen size ──────────────────────────────────────
   document.getElementById("btn-expand").addEventListener("click", () => {
     window.resizeTo(screen.availWidth, screen.availHeight);
     window.moveTo(0, 0);
   });
 
-  // ── Listen for video stream from parent ──────────────────────────────────
-  window.addEventListener("message", (e) => {
+  window.addEventListener("message", e => {
     if (!e.data) return;
-    if (e.data.type === "UVP_STREAM_READY") {
+    if (e.data.type === "UVP_STREAM_READY")
       document.getElementById("status").style.display = "none";
-    }
-    if (e.data.type === "UVP_STREAM_ERROR") {
-      document.getElementById("status").innerHTML =
-        "<span>⚠️ Stream unavailable</span>";
-    }
-    if (e.data.type === "UVP_CLOSE" && e.data.userId === userId) {
+    if (e.data.type === "UVP_STREAM_ERROR")
+      document.getElementById("status").innerHTML = "<span>⚠️ Stream unavailable</span>";
+    if (e.data.type === "UVP_CLOSE" && e.data.userId === userId)
       window.close();
-    }
   });
 
-  // ── Notify opener that we're ready ───────────────────────────────────────
   window.addEventListener("load", () => {
     window.opener?.postMessage({ type: "UVP_READY", userId }, "*");
   });
@@ -330,11 +292,9 @@ function buildPopoutHTML(userId: string, username: string, streamKey: string, op
 </html>`;
 }
 
-// ─── Stream injection: grabs the <video> element from Discord and pipes it ──
+// ─── Stream injection ─────────────────────────────────────────────────────────
 
 function findVideoElement(userId: string): HTMLVideoElement | null {
-    // Discord renders video streams inside elements with data attributes or
-    // specific class patterns. We look for the most likely candidates.
     const selectors = [
         `[data-user-id="${userId}"] video`,
         `[data-userid="${userId}"] video`,
@@ -344,50 +304,40 @@ function findVideoElement(userId: string): HTMLVideoElement | null {
         const el = document.querySelector<HTMLVideoElement>(sel);
         if (el) return el;
     }
-    // Fallback: scan all videos and match via stream srcObject track label
-    const all = Array.from(document.querySelectorAll<HTMLVideoElement>("video"));
-    // Return the first non-self video that has srcObject with tracks
-    return all.find(v => v.srcObject instanceof MediaStream &&
-        (v.srcObject as MediaStream).getVideoTracks().length > 0) ?? null;
+    return Array.from(document.querySelectorAll<HTMLVideoElement>("video"))
+        .find(v => v.srcObject instanceof MediaStream &&
+            (v.srcObject as MediaStream).getVideoTracks().length > 0) ?? null;
 }
 
 function injectStream(popoutWin: Window, userId: string) {
     const video = findVideoElement(userId);
-    if (!video || !video.srcObject) {
+    if (!video?.srcObject) {
         popoutWin.postMessage({ type: "UVP_STREAM_ERROR" }, "*");
         return;
     }
 
-    // Create a new video in the popout and assign the same MediaStream
-    const stream = video.srcObject as MediaStream;
-    const popoutDoc = popoutWin.document;
-    const slot = popoutDoc.getElementById("video-slot");
+    const slot = popoutWin.document.getElementById("video-slot");
     if (!slot) return;
 
-    const pv = popoutDoc.createElement("video");
-    pv.autoplay = true;
+    const pv = popoutWin.document.createElement("video");
+    pv.autoplay    = true;
     pv.playsInline = true;
-    pv.muted = true; // mute to avoid echo; user hears audio from main Discord
+    pv.muted       = true;
     pv.style.cssText = "width:100%;height:100%;object-fit:contain;display:block;";
-    pv.srcObject = stream;
+    pv.srcObject   = video.srcObject as MediaStream;
     slot.appendChild(pv);
-    pv.play().catch(() => {/* autoplay policy */});
+    pv.play().catch(() => { /* autoplay policy */ });
 
     popoutWin.postMessage({ type: "UVP_STREAM_READY" }, "*");
 }
 
-// ─── Open (or focus) a popout ─────────────────────────────────────────────────
+// ─── Open / focus a popout ────────────────────────────────────────────────────
 
 function openPopout(userId: string, username: string) {
     const existing = openPopouts.get(userId);
-    if (existing && !existing.win.closed) {
-        existing.win.focus();
-        return;
-    }
+    if (existing && !existing.win.closed) { existing.win.focus(); return; }
 
     const { width, height, opacity, alwaysOnTop, showUsername } = settings.store;
-
-    // Derive a rough stream key (used for future stream-matching improvements)
     const streamKey = `${userId}:video`;
 
     const html = buildPopoutHTML(userId, username, streamKey, {
@@ -396,14 +346,13 @@ function openPopout(userId: string, username: string) {
 
     const features = [
         `width=${width}`,
-        `height=${height + 28}`, // +titlebar
+        `height=${height + 28}`,
         "resizable=yes",
         "scrollbars=no",
         "toolbar=no",
         "menubar=no",
         "location=no",
         "status=no",
-        "alwaysOnTop=yes", // Chrome/Electron honours this in BrowserWindow context
     ].join(",");
 
     const win = window.open("about:blank", `uvp_${userId}`, features);
@@ -418,40 +367,27 @@ function openPopout(userId: string, username: string) {
 
     openPopouts.set(userId, { win, userId, username });
 
-    // Inject stream once popout signals it's ready
     const onMessage = (e: MessageEvent) => {
         if (e.source !== win) return;
         if (e.data?.type === "UVP_READY" && e.data.userId === userId) {
             injectStream(win, userId);
             window.removeEventListener("message", onMessage);
         }
-        if (e.data?.type === "UVP_AOT") {
-            // Could relay to Electron main process here if needed
-        }
     };
     window.addEventListener("message", onMessage);
 
-    // Cleanup on close
     const pollClose = setInterval(() => {
-        if (win.closed) {
-            clearInterval(pollClose);
-            openPopouts.delete(userId);
-        }
+        if (win.closed) { clearInterval(pollClose); openPopouts.delete(userId); }
     }, 1000);
 }
 
 // ─── Context Menu Patch ───────────────────────────────────────────────────────
 
-/**
- * Patches the user context menu that appears when you right-click someone in a
- * voice/video call (the "user-context" or "user-context-modal-user" menu).
- */
 const userContextPatch: NavContextMenuPatchCallback = (children, { user, userId: rawId }) => {
-    const targetUser = user;
-    if (!targetUser) return;
+    if (!user) return;
 
-    const uid = targetUser.id ?? rawId;
-    const uname = targetUser.globalName ?? targetUser.username ?? uid;
+    const uid   = user.id ?? rawId;
+    const uname = user.globalName ?? user.username ?? uid;
 
     children.push(
         <Menu.MenuSeparator key="uvp-sep" />,
@@ -473,21 +409,18 @@ export default definePlugin({
     settings,
 
     start() {
-        addContextMenuPatch("user-context", userContextPatch);
-        addContextMenuPatch("user-context-modal-user", userContextPatch);
-        // Some builds use this menu in call participant lists
+        addContextMenuPatch("user-context",              userContextPatch);
+        addContextMenuPatch("user-context-modal-user",   userContextPatch);
         addContextMenuPatch("channel-call-user-context", userContextPatch);
     },
 
     stop() {
-        removeContextMenuPatch("user-context", userContextPatch);
-        removeContextMenuPatch("user-context-modal-user", userContextPatch);
+        removeContextMenuPatch("user-context",              userContextPatch);
+        removeContextMenuPatch("user-context-modal-user",   userContextPatch);
         removeContextMenuPatch("channel-call-user-context", userContextPatch);
 
-        // Close all open popouts
-        for (const { win } of openPopouts.values()) {
+        for (const { win } of openPopouts.values())
             if (!win.closed) win.close();
-        }
         openPopouts.clear();
     },
 });
