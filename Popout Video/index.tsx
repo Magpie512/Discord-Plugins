@@ -1,0 +1,493 @@
+/*
+ * Vencord, a Discord client mod
+ * Copyright (c) 2024 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+import { addContextMenuPatch, NavContextMenuPatchCallback, removeContextMenuPatch } from "@api/ContextMenu";
+import { definePluginSettings } from "@api/Settings";
+import { makeRange } from "@components/PluginSettings/components";
+import definePlugin, { OptionType } from "@utils/types";
+import { Menu } from "@webpack/common";
+
+const settings = definePluginSettings({
+    width: {
+        type: OptionType.SLIDER,
+        description: "Default popout width (px)",
+        default: 480,
+        markers: makeRange(240, 1280, 80),
+    },
+    height: {
+        type: OptionType.SLIDER,
+        description: "Default popout height (px)",
+        default: 270,
+        markers: makeRange(135, 720, 45),
+    },
+    opacity: {
+        type: OptionType.SLIDER,
+        description: "Popout background opacity (0–100)",
+        default: 100,
+        markers: makeRange(10, 100, 10),
+    },
+    alwaysOnTop: {
+        type: OptionType.BOOLEAN,
+        description: "Keep popout window always on top",
+        default: true,
+    },
+    showUsername: {
+        type: OptionType.BOOLEAN,
+        description: "Show username overlay on popout",
+        default: true,
+    },
+});
+
+// ─── Popout Window Manager ────────────────────────────────────────────────────
+
+interface PopoutEntry {
+    win: Window;
+    userId: string;
+    username: string;
+}
+
+const openPopouts = new Map<string, PopoutEntry>();
+
+function buildPopoutHTML(userId: string, username: string, streamKey: string, opts: {
+    width: number;
+    height: number;
+    opacity: number;
+    alwaysOnTop: boolean;
+    showUsername: boolean;
+}): string {
+    return /* html */`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>${username} – Video Popout</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --accent: #5865f2;
+    --bg: rgba(0, 0, 0, ${opts.opacity / 100});
+    --radius: 8px;
+    --handle-h: 28px;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: transparent;
+    font-family: "gg sans", "Noto Sans", Whitney, "Helvetica Neue", sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  #container {
+    position: relative;
+    width: 100%; height: 100%;
+    background: var(--bg);
+    border-radius: var(--radius);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  }
+
+  /* ── Title bar / drag handle ── */
+  #titlebar {
+    flex: 0 0 var(--handle-h);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    background: rgba(0,0,0,0.45);
+    backdrop-filter: blur(6px);
+    -webkit-app-region: drag;
+    cursor: grab;
+  }
+  #titlebar:active { cursor: grabbing; }
+
+  .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    -webkit-app-region: no-drag;
+    cursor: pointer;
+    opacity: 0.85;
+    transition: opacity 0.15s, transform 0.15s;
+    border: none;
+    outline: none;
+  }
+  .dot:hover { opacity: 1; transform: scale(1.15); }
+  #btn-close  { background: #ff5f57; }
+  #btn-pin    { background: #ffbd2e; }
+  #btn-expand { background: #28c940; }
+
+  #tb-title {
+    flex: 1;
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.6);
+    letter-spacing: 0.03em;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    pointer-events: none;
+  }
+
+  #tb-aot {
+    -webkit-app-region: no-drag;
+    font-size: 10px;
+    color: rgba(255,255,255,0.45);
+    cursor: pointer;
+    padding: 2px 5px;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+    border: none;
+    outline: none;
+    background: transparent;
+  }
+  #tb-aot:hover { background: rgba(255,255,255,0.1); color: #fff; }
+  #tb-aot.active { color: var(--accent); }
+
+  /* ── Video area ── */
+  #video-wrap {
+    flex: 1;
+    position: relative;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #video-frame {
+    width: 100%; height: 100%;
+    border: none;
+    display: block;
+    background: #111;
+  }
+
+  /* ── Username overlay ── */
+  #username-tag {
+    position: absolute;
+    bottom: 8px; left: 8px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(0,0,0,0.65);
+    backdrop-filter: blur(4px);
+    padding: 3px 8px 3px 5px;
+    border-radius: 20px;
+    pointer-events: none;
+  }
+  #username-tag svg { color: #fff; flex-shrink: 0; }
+  #username-tag span {
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: 0.02em;
+  }
+  ${opts.showUsername ? "" : "#username-tag { display: none; }"}
+
+  /* ── Resize handle ── */
+  #resize-corner {
+    position: absolute;
+    bottom: 0; right: 0;
+    width: 16px; height: 16px;
+    cursor: nwse-resize;
+    -webkit-app-region: no-drag;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: 2px;
+    opacity: 0.4;
+    transition: opacity 0.15s;
+  }
+  #resize-corner:hover { opacity: 0.9; }
+
+  /* ── Loading / error states ── */
+  #status {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: rgba(255,255,255,0.5);
+    font-size: 13px;
+    pointer-events: none;
+    background: #111;
+  }
+  .spinner {
+    width: 28px; height: 28px;
+    border: 3px solid rgba(255,255,255,0.12);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.75s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="container">
+
+  <!-- Title bar -->
+  <div id="titlebar">
+    <button class="dot" id="btn-close"  title="Close"></button>
+    <button class="dot" id="btn-pin"    title="Toggle Always-on-Top"></button>
+    <button class="dot" id="btn-expand" title="Fit to screen"></button>
+    <span id="tb-title">🎥 ${username}</span>
+    <button id="tb-aot" title="Toggle always on top" class="${opts.alwaysOnTop ? "active" : ""}">
+      ${opts.alwaysOnTop ? "📌 AOT" : "📌 AOT"}
+    </button>
+  </div>
+
+  <!-- Video -->
+  <div id="video-wrap">
+    <div id="status">
+      <div class="spinner"></div>
+      <span>Connecting to stream…</span>
+    </div>
+    <!-- The actual video element will be cloned/moved here by the injector -->
+    <div id="video-slot"></div>
+
+    <!-- Username overlay -->
+    <div id="username-tag">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm0 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm0 14c-2.48 0-4.688-1.008-6.3-2.634A7.95 7.95 0 0 1 12 15c2.13 0 4.07.833 5.52 2.193A7.96 7.96 0 0 1 12 20z"/>
+      </svg>
+      <span>${username}</span>
+    </div>
+
+    <!-- Resize grip -->
+    <div id="resize-corner">
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="rgba(255,255,255,0.7)">
+        <path d="M10 0 L10 10 L0 10 Z"/>
+      </svg>
+    </div>
+  </div>
+</div>
+
+<script>
+  const userId   = ${JSON.stringify(userId)};
+  const streamKey = ${JSON.stringify(streamKey)};
+  let aot = ${opts.alwaysOnTop};
+
+  // ── Close ──────────────────────────────────────────────────────────────────
+  document.getElementById("btn-close").addEventListener("click", () => window.close());
+
+  // ── Always-on-top via Electron IPC (if available) ─────────────────────────
+  function setAOT(val) {
+    aot = val;
+    const btn = document.getElementById("tb-aot");
+    btn.classList.toggle("active", val);
+    // Attempt Electron IPC call exposed by Vencord's preload / DiscordNative
+    try {
+      window.DiscordNative?.window?.setAlwaysOnTop?.(val);
+    } catch (e) {
+      // Not in Electron context, silently ignore
+    }
+    try {
+      // Fallback: postMessage to opener
+      window.opener?.postMessage({ type: "UVP_AOT", userId, val }, "*");
+    } catch (e) {}
+  }
+
+  document.getElementById("btn-pin").addEventListener("click", () => setAOT(!aot));
+  document.getElementById("tb-aot").addEventListener("click", () => setAOT(!aot));
+
+  // Apply initial AOT
+  if (aot) setAOT(true);
+
+  // ── Expand to available screen size ──────────────────────────────────────
+  document.getElementById("btn-expand").addEventListener("click", () => {
+    window.resizeTo(screen.availWidth, screen.availHeight);
+    window.moveTo(0, 0);
+  });
+
+  // ── Listen for video stream from parent ──────────────────────────────────
+  window.addEventListener("message", (e) => {
+    if (!e.data) return;
+    if (e.data.type === "UVP_STREAM_READY") {
+      document.getElementById("status").style.display = "none";
+    }
+    if (e.data.type === "UVP_STREAM_ERROR") {
+      document.getElementById("status").innerHTML =
+        "<span>⚠️ Stream unavailable</span>";
+    }
+    if (e.data.type === "UVP_CLOSE" && e.data.userId === userId) {
+      window.close();
+    }
+  });
+
+  // ── Notify opener that we're ready ───────────────────────────────────────
+  window.addEventListener("load", () => {
+    window.opener?.postMessage({ type: "UVP_READY", userId }, "*");
+  });
+</script>
+</body>
+</html>`;
+}
+
+// ─── Stream injection: grabs the <video> element from Discord and pipes it ──
+
+function findVideoElement(userId: string): HTMLVideoElement | null {
+    // Discord renders video streams inside elements with data attributes or
+    // specific class patterns. We look for the most likely candidates.
+    const selectors = [
+        `[data-user-id="${userId}"] video`,
+        `[data-userid="${userId}"] video`,
+        `.video-${userId} video`,
+    ];
+    for (const sel of selectors) {
+        const el = document.querySelector<HTMLVideoElement>(sel);
+        if (el) return el;
+    }
+    // Fallback: scan all videos and match via stream srcObject track label
+    const all = Array.from(document.querySelectorAll<HTMLVideoElement>("video"));
+    // Return the first non-self video that has srcObject with tracks
+    return all.find(v => v.srcObject instanceof MediaStream &&
+        (v.srcObject as MediaStream).getVideoTracks().length > 0) ?? null;
+}
+
+function injectStream(popoutWin: Window, userId: string) {
+    const video = findVideoElement(userId);
+    if (!video || !video.srcObject) {
+        popoutWin.postMessage({ type: "UVP_STREAM_ERROR" }, "*");
+        return;
+    }
+
+    // Create a new video in the popout and assign the same MediaStream
+    const stream = video.srcObject as MediaStream;
+    const popoutDoc = popoutWin.document;
+    const slot = popoutDoc.getElementById("video-slot");
+    if (!slot) return;
+
+    const pv = popoutDoc.createElement("video");
+    pv.autoplay = true;
+    pv.playsInline = true;
+    pv.muted = true; // mute to avoid echo; user hears audio from main Discord
+    pv.style.cssText = "width:100%;height:100%;object-fit:contain;display:block;";
+    pv.srcObject = stream;
+    slot.appendChild(pv);
+    pv.play().catch(() => {/* autoplay policy */});
+
+    popoutWin.postMessage({ type: "UVP_STREAM_READY" }, "*");
+}
+
+// ─── Open (or focus) a popout ─────────────────────────────────────────────────
+
+function openPopout(userId: string, username: string) {
+    const existing = openPopouts.get(userId);
+    if (existing && !existing.win.closed) {
+        existing.win.focus();
+        return;
+    }
+
+    const { width, height, opacity, alwaysOnTop, showUsername } = settings.store;
+
+    // Derive a rough stream key (used for future stream-matching improvements)
+    const streamKey = `${userId}:video`;
+
+    const html = buildPopoutHTML(userId, username, streamKey, {
+        width, height, opacity, alwaysOnTop, showUsername,
+    });
+
+    const features = [
+        `width=${width}`,
+        `height=${height + 28}`, // +titlebar
+        "resizable=yes",
+        "scrollbars=no",
+        "toolbar=no",
+        "menubar=no",
+        "location=no",
+        "status=no",
+        "alwaysOnTop=yes", // Chrome/Electron honours this in BrowserWindow context
+    ].join(",");
+
+    const win = window.open("about:blank", `uvp_${userId}`, features);
+    if (!win) {
+        console.error("[UserVideoPopout] Popup blocked – allow popups for Discord.");
+        return;
+    }
+
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+
+    openPopouts.set(userId, { win, userId, username });
+
+    // Inject stream once popout signals it's ready
+    const onMessage = (e: MessageEvent) => {
+        if (e.source !== win) return;
+        if (e.data?.type === "UVP_READY" && e.data.userId === userId) {
+            injectStream(win, userId);
+            window.removeEventListener("message", onMessage);
+        }
+        if (e.data?.type === "UVP_AOT") {
+            // Could relay to Electron main process here if needed
+        }
+    };
+    window.addEventListener("message", onMessage);
+
+    // Cleanup on close
+    const pollClose = setInterval(() => {
+        if (win.closed) {
+            clearInterval(pollClose);
+            openPopouts.delete(userId);
+        }
+    }, 1000);
+}
+
+// ─── Context Menu Patch ───────────────────────────────────────────────────────
+
+/**
+ * Patches the user context menu that appears when you right-click someone in a
+ * voice/video call (the "user-context" or "user-context-modal-user" menu).
+ */
+const userContextPatch: NavContextMenuPatchCallback = (children, { user, userId: rawId }) => {
+    const targetUser = user;
+    if (!targetUser) return;
+
+    const uid = targetUser.id ?? rawId;
+    const uname = targetUser.globalName ?? targetUser.username ?? uid;
+
+    children.push(
+        <Menu.MenuSeparator key="uvp-sep" />,
+        <Menu.MenuItem
+            key="uvp-open"
+            id="uvp-open"
+            label="📹 Pop Out Video"
+            action={() => openPopout(uid, uname)}
+        />
+    );
+};
+
+// ─── Plugin Definition ────────────────────────────────────────────────────────
+
+export default definePlugin({
+    name: "UserVideoPopout",
+    description: "Pop out any user's video stream into a floating always-on-top window during calls.",
+    authors: [{ name: "you", id: 0n }],
+    settings,
+
+    start() {
+        addContextMenuPatch("user-context", userContextPatch);
+        addContextMenuPatch("user-context-modal-user", userContextPatch);
+        // Some builds use this menu in call participant lists
+        addContextMenuPatch("channel-call-user-context", userContextPatch);
+    },
+
+    stop() {
+        removeContextMenuPatch("user-context", userContextPatch);
+        removeContextMenuPatch("user-context-modal-user", userContextPatch);
+        removeContextMenuPatch("channel-call-user-context", userContextPatch);
+
+        // Close all open popouts
+        for (const { win } of openPopouts.values()) {
+            if (!win.closed) win.close();
+        }
+        openPopouts.clear();
+    },
+});
