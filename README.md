@@ -1,13 +1,136 @@
-# DISCLAIMER: ONLY FOR VENCORD
+> **Disclaimer:**  
+> Modifying Discord is against Discord’s Terms of Service.  
+> Use Vencord at your own risk.  
+> This guide only covers the official, open‑source build process.
+> Also all of this code is from my educational journey >:D
 
 ### Plugin List
 
-- ** Popout User Video**
+- **Popout User Video**
   Allowing users to pop out streams singularly. Ideal for Edaters. #Honest
 
+### Prerequisites (All Platforms)
 
-  ## MacOS Tutorial
-'''
+Before building Vencord, install:
+
+- **Git**
+- **Node.js 18+**
+- **pnpm** (recommended by Vencord)
+
+## Windows Tutorial
+
+1. Install pnpm (if you don't have it):
+
+```sh
+npm install -g pnpm
+```
+
+2. Clone the repository:
+
+```sh
+git clone https://github.com/Vencord/Vencord.git
+cd Vencord
+```
+
+3. Install dependencies:
+
+```sh
+pnpm install
+```
+
+4. Build Vencord:
+
+```sh
+pnpm build
+```
+
+## MacOS Tutorial (Untested)
+
+1. Using Homebrew
+
+```sh
 brew install git node
 npm install -g pnpm
-'''
+```
+
+2. Clone the repository:
+
+```sh
+git clone https://github.com/Vencord/Vencord.git
+cd Vencord
+```
+
+3. Install dependencies:
+
+```sh
+pnpm install
+```
+
+4. Build Vencord
+
+```sh
+pnpm build
+```
+
+5. Inject into Discord:
+
+```sh
+pnpm inject
+```
+
+6. Updating
+
+```sh
+git pull
+pnpm build
+pnpm inject
+```
+
+
+## Linux Tutorial (Untested)
+
+Prerequisite:
+
+```sh
+sudo apt update
+sudo apt install git nodejs npm
+npm install -g pnpm
+```
+
+1. Clone the repository:
+
+```sh
+git clone https://github.com/Vencord/Vencord.git
+cd Vencord
+```
+
+2. Install dependencies
+
+```sh
+pnpm install
+```
+
+3. Build Vencord:
+
+```sh
+pnpm build
+```
+
+4. Inject Vencord (Two options):
+```sh
+pnpm inject
+```
+
+4. If you installed discord via flatpak
+
+```sh
+pnpm inject --flatpak
+```
+
+5. Updating 
+
+```sh
+git pull
+pnpm build
+pnpm inject
+```
