@@ -9,8 +9,7 @@ import "styles.css";
 import { Devs } from "@utils/constants";
 import definePlugin from "@utils/types";
 import { findByPropsLazy, findComponentByCodeLazy } from "@webpack";
-import { ChannelStore, GuildStore, React, useEffect, useRef, useState, useCallback, useReducer } from "@webpack/common";
-import { Popout } from "@components/Popout";
+import { ChannelStore, ReactDOM, React, useEffect, useRef, useState, useCallback, useReducer } from "@webpack/common";
 
 // ─── Webpack Module Finds ────────────────────────────────────────────────────
 
@@ -313,7 +312,7 @@ function PopoutButton({ channel }: { channel: any; }) {
 // ─── Plugin Definition ────────────────────────────────────────────────────────
 
 export default definePlugin({
-    name: "Chat Popout",
+    name: "ChatPopout",
     description: "Pop any chat channel out into a persistent, draggable floating window that stays on that channel while you browse elsewhere.",
     authors: [Devs.Ven], // Replace with your own entry in constants/devs.ts
 
@@ -326,8 +325,7 @@ export default definePlugin({
         container.id = "vc-chat-popout-container";
         document.body.appendChild(container);
 
-        const { createRoot } = require("react-dom/client");
-        const root = createRoot(container);
+        const root = ReactDOM.createRoot(container);
         root.render(<PopoutManager />);
 
         // Store root for cleanup
