@@ -313,7 +313,7 @@ function PopoutButton({ channel }: { channel: any; }) {
 // ─── Plugin Definition ────────────────────────────────────────────────────────
 
 export default definePlugin({
-    name: "ChatPopout",
+    name: "Chat Popout",
     description: "Pop any chat channel out into a persistent, draggable floating window that stays on that channel while you browse elsewhere.",
     authors: [Devs.Ven], // Replace with your own entry in constants/devs.ts
 

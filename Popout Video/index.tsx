@@ -403,7 +403,7 @@ const userContextPatch: NavContextMenuPatchCallback = (children, { user, userId:
 // ─── Plugin Definition ────────────────────────────────────────────────────────
 
 export default definePlugin({
-    name: "UserVideoPopout",
+    name: "User Video Poput",
     description: "Pop out any user's video stream into a floating always-on-top window during calls.",
     authors: [{ name: "you", id: 0n }],
     settings,
