@@ -394,7 +394,7 @@ const userContextPatch: NavContextMenuPatchCallback = (children, { user, userId:
         <Menu.MenuItem
             key="uvp-open"
             id="uvp-open"
-            label="📹 Pop Out Video"
+            label="Pop Out Video"
             action={() => openPopout(uid, uname)}
         />
     );
@@ -403,7 +403,7 @@ const userContextPatch: NavContextMenuPatchCallback = (children, { user, userId:
 // ─── Plugin Definition ────────────────────────────────────────────────────────
 
 export default definePlugin({
-    name: "User Video Poput",
+    name: "Popout Video!",
     description: "Pop out any user's video stream into a floating always-on-top window during calls.",
     authors: [{ name: "Mg.pie", github: "Magpie512", id: 0n }],
     settings,

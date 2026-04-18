@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/// <reference types="react" />
+
 import "./styles.css";
 
 import { Devs } from "@utils/constants";
@@ -313,8 +315,8 @@ function PopoutButton({ channel }: { channel: any; }) {
 
 export default definePlugin({
     name: "Popout Chat!",
-    description: "Pop any chat channel out into a persistent, draggable floating window that stays on that channel while you browse elsewhere.",
-    authors: [Devs.mg.pie], // Replace with your own entry in constants/devs.ts
+    description: "Pop out any chat channel into a persistent, draggable floating window that stays on that channel while you browse elsewhere.",
+    authors: [{ name: "Mg.pie", github: "Magpie512", id: 0n }],
 
     // Mount the PopoutManager once into Discord's app root
     renderChatBarButton: null, // not using this API
