@@ -312,9 +312,9 @@ function PopoutButton({ channel }: { channel: any; }) {
 // ─── Plugin Definition ────────────────────────────────────────────────────────
 
 export default definePlugin({
-    name: "ChatPopout",
+    name: "Popout Chat!",
     description: "Pop any chat channel out into a persistent, draggable floating window that stays on that channel while you browse elsewhere.",
-    authors: [Devs.Ven], // Replace with your own entry in constants/devs.ts
+    authors: [Devs.mg.pie], // Replace with your own entry in constants/devs.ts
 
     // Mount the PopoutManager once into Discord's app root
     renderChatBarButton: null, // not using this API
