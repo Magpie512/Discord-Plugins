@@ -45,6 +45,11 @@ pnpm install
 pnpm build
 ```
 
+5. Inject
+```sh
+pnpm inject
+```
+
 ## MacOS Tutorial (Untested)
 
 1. Using Homebrew
