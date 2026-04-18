@@ -1,8 +1,8 @@
 > **Disclaimer:**  
-> Modifying Discord is against Discord’s Terms of Service.  
+> Modifying Discord is against Discord’s Terms of Service. I do not advise doing so. That being said,
 > Use Vencord at your own risk.  
 > This guide only covers the official, open‑source build process.
-> Also all of this code is from my educational journey >:D
+> Also all of this code is from my educational journey and once again I do not condone breaking any Tos this is just TSX mod application to prove i actually can interpret already made code and make my own >:D
 
 ### Plugin List
 
