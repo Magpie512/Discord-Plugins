@@ -1,0 +1,956 @@
+/**
+ * @name EagleLake — Dungeons & Dragons 5e
+ * @author you
+ * @version 1.0.0
+ * @description A parchment-and-ink D&D 5e themed skin for Vesktop/BetterDiscord.
+ *              Uses Eagle Lake (Google Fonts) for display text.
+ * @source https://github.com/
+ *
+ * HOW TO INSTALL:
+ *   Drop this file into: %appdata%\Vesktop\themes\   (Windows)
+ *              or       ~/.config/vesktop/themes/    (Linux)
+ *   Then enable it in Vesktop → Settings → Themes.
+ */
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   GOOGLE FONTS IMPORT — Eagle Lake (display) + Crimson Text (body serif)
+   ───────────────────────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Eagle+Lake&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   DESIGN TOKENS
+   ───────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Parchment palette */
+  --dnd-parchment-100: #fdf6e3;
+  --dnd-parchment-200: #f5e6c8;
+  --dnd-parchment-300: #e8d5a3;
+  --dnd-parchment-400: #d4b483;
+  --dnd-parchment-500: #b8924f;
+
+  /* Ink & text */
+  --dnd-ink-900:   #1a0f00;
+  --dnd-ink-800:   #2e1b00;
+  --dnd-ink-700:   #4a2f0a;
+  --dnd-ink-600:   #6b4423;
+
+  /* Blood red accent (chapter headings, badges, pings) */
+  --dnd-red-600:   #8b1a1a;
+  --dnd-red-400:   #c0392b;
+  --dnd-red-200:   #f4b8b8;
+
+  /* Gold accent (borders, dividers, badges) */
+  --dnd-gold-600:  #9a7014;
+  --dnd-gold-400:  #c9960c;
+  --dnd-gold-200:  #f0d080;
+  --dnd-gold-100:  #fcedc0;
+
+  /* Sidebar deep tone */
+  --dnd-sidebar-bg:   #2c1a0e;
+  --dnd-sidebar-mid:  #3d2510;
+  --dnd-sidebar-hi:   #5a3820;
+
+  /* Fonts */
+  --dnd-font-display: 'Eagle Lake', 'Georgia', serif;
+  --dnd-font-body:    'Crimson Text', 'Georgia', serif;
+
+  /* Shadows */
+  --dnd-shadow-sm: 0 1px 3px rgba(30,10,0,0.25);
+  --dnd-shadow-md: 0 3px 10px rgba(30,10,0,0.35);
+  --dnd-shadow-inset: inset 0 1px 3px rgba(30,10,0,0.20);
+
+  /* Divider ornament colour */
+  --dnd-divider: var(--dnd-gold-400);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   BASE RESETS — map Discord vars onto our palette
+   ───────────────────────────────────────────────────────────────────────────── */
+:root,
+.theme-dark,
+.theme-light {
+  --background-primary:           var(--dnd-parchment-100);
+  --background-secondary:         var(--dnd-parchment-200);
+  --background-secondary-alt:     var(--dnd-parchment-300);
+  --background-tertiary:          var(--dnd-sidebar-bg);
+  --background-accent:            var(--dnd-gold-400);
+  --background-floating:          var(--dnd-parchment-100);
+  --background-mobile-primary:    var(--dnd-parchment-100);
+  --background-mobile-secondary:  var(--dnd-parchment-200);
+  --background-modifier-hover:    rgba(180,140,60,0.18);
+  --background-modifier-active:   rgba(180,140,60,0.30);
+  --background-modifier-selected: rgba(180,140,60,0.25);
+  --background-modifier-accent:   rgba(180,140,60,0.15);
+
+  --channeltextarea-background:   var(--dnd-parchment-200);
+
+  --text-normal:           var(--dnd-ink-800);
+  --text-muted:            var(--dnd-ink-600);
+  --text-link:             var(--dnd-red-600);
+  --header-primary:        var(--dnd-ink-900);
+  --header-secondary:      var(--dnd-ink-700);
+  --interactive-normal:    var(--dnd-ink-700);
+  --interactive-hover:     var(--dnd-ink-900);
+  --interactive-active:    var(--dnd-red-600);
+  --interactive-muted:     var(--dnd-parchment-500);
+
+  --scrollbar-thin-thumb:  var(--dnd-gold-400);
+  --scrollbar-thin-track:  transparent;
+  --scrollbar-auto-thumb:  var(--dnd-gold-400);
+  --scrollbar-auto-track:  var(--dnd-parchment-300);
+
+  --mention-foreground:    var(--dnd-red-600);
+  --mention-background:    var(--dnd-red-200);
+
+  --brand-experiment:      var(--dnd-red-600);
+  --brand-experiment-100:  var(--dnd-red-200);
+  --brand-500:             var(--dnd-red-600);
+  --brand-560:             var(--dnd-red-400);
+
+  --status-positive-background: #c8e6c9;
+  --status-positive-text:       #1b5e20;
+  --status-warning-background:  var(--dnd-gold-100);
+  --status-warning-text:        var(--dnd-gold-600);
+  --status-danger-background:   var(--dnd-red-200);
+  --status-danger-text:         var(--dnd-red-600);
+
+  --modal-background:      var(--dnd-parchment-100);
+  --modal-footer-background: var(--dnd-parchment-200);
+
+  --input-background:      var(--dnd-parchment-200);
+  --input-placeholder-text: var(--dnd-parchment-500);
+
+  --elevation-low:  var(--dnd-shadow-sm);
+  --elevation-medium: var(--dnd-shadow-md);
+  --elevation-high: var(--dnd-shadow-md);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   TYPOGRAPHY
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Body copy → Crimson Text */
+body,
+[class*="markup"],
+[class*="messageContent"],
+[class*="textArea"],
+[class*="channelName"],
+[class*="userPopout"],
+.container-1NXEtd,
+[class*="description"] {
+  font-family: var(--dnd-font-body) !important;
+  font-size: 16px !important;
+  line-height: 1.65 !important;
+  color: var(--dnd-ink-800);
+}
+
+/* Display headings → Eagle Lake */
+[class*="name-"],
+[class*="title-"],
+[class*="header-"],
+[class*="headerText"],
+[class*="channelName"],
+[class*="groupHeaderText"],
+[class*="friendsTableHeadingText"],
+[class*="username"],
+[class*="privateChannelName"],
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--dnd-font-display) !important;
+  color: var(--dnd-ink-900) !important;
+  letter-spacing: 0.02em;
+}
+
+/* Message author name */
+[class*="username-"]:not([class*="autocomplete"]) {
+  font-family: var(--dnd-font-display) !important;
+  font-size: 15px !important;
+  color: var(--dnd-ink-900) !important;
+  text-shadow: 0 1px 2px rgba(255,255,255,0.4);
+}
+
+/* Timestamps */
+[class*="timestamp"] {
+  font-family: var(--dnd-font-body) !important;
+  font-style: italic;
+  color: var(--dnd-parchment-500) !important;
+  font-size: 12px !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   PARCHMENT TEXTURE — CSS only noise for the main content area
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Main chat parchment */
+[class*="chat-"] > [class*="content-"],
+[class*="messagesWrapper"],
+[class*="scroller-"] {
+  background-color: var(--dnd-parchment-100) !important;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 28px,
+      rgba(160,120,40,0.045) 28px,
+      rgba(160,120,40,0.045) 29px
+    ) !important;
+}
+
+/* Worn-edge vignette on chat area */
+[class*="chat-"] {
+  box-shadow: inset 0 0 60px rgba(120,80,20,0.12) !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SIDEBAR — dark leather / wood panel
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Channels sidebar */
+[class*="sidebar"] {
+  background-color: var(--dnd-sidebar-bg) !important;
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 3px,
+      rgba(255,255,255,0.012) 3px,
+      rgba(255,255,255,0.012) 4px
+    ) !important;
+  border-right: 2px solid var(--dnd-gold-600) !important;
+}
+
+/* Server list far-left */
+[class*="guilds-"],
+[class*="wrapper__8436d"] {
+  background-color: var(--dnd-sidebar-mid) !important;
+  border-right: 1px solid var(--dnd-gold-600) !important;
+}
+
+/* Channel items */
+[class*="containerDefault"],
+[class*="link-"] {
+  color: var(--dnd-parchment-300) !important;
+  font-family: var(--dnd-font-body) !important;
+}
+
+[class*="containerDefault"]:hover,
+[class*="link-"]:hover {
+  background: rgba(180,140,60,0.20) !important;
+  color: var(--dnd-parchment-100) !important;
+}
+
+/* Selected channel */
+[class*="containerDefault"][class*="modeSelected"],
+[class*="link-"][class*="selected"] {
+  background: rgba(180,140,60,0.35) !important;
+  color: var(--dnd-gold-200) !important;
+  border-left: 3px solid var(--dnd-gold-400) !important;
+}
+
+/* Channel category headers */
+[class*="containerDefault"][class*="isCategory"],
+[class*="categoryContainer"] {
+  background: transparent !important;
+  border-bottom: 1px solid rgba(180,140,60,0.3) !important;
+  margin-top: 6px !important;
+}
+
+[class*="categoryContainer"] [class*="name-"],
+[class*="containerDefault"][class*="isCategory"] {
+  font-family: var(--dnd-font-display) !important;
+  font-size: 11px !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
+  color: var(--dnd-gold-400) !important;
+}
+
+/* Channel icons */
+[class*="icon-"] {
+  color: var(--dnd-parchment-400) !important;
+}
+
+/* Sidebar username area */
+[class*="panels-"],
+[class*="panel-"] {
+  background-color: var(--dnd-sidebar-mid) !important;
+  border-top: 2px solid var(--dnd-gold-600) !important;
+}
+
+[class*="panels-"] [class*="username"] {
+  color: var(--dnd-parchment-200) !important;
+  font-family: var(--dnd-font-display) !important;
+}
+
+[class*="panels-"] [class*="subText"] {
+  color: var(--dnd-parchment-400) !important;
+  font-family: var(--dnd-font-body) !important;
+  font-style: italic;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SERVER LIST ICONS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Server icon buttons */
+[class*="wrapper-"] > [class*="pill_"] + div,
+[class*="listItem"] {
+  filter: sepia(0.3) brightness(0.95) !important;
+}
+
+/* Unread / mention pill */
+[class*="pill_"][class*="wrapper"] {
+  background-color: var(--dnd-gold-400) !important;
+}
+
+/* Active server indicator */
+[class*="pill_"][class*="selected"] {
+  background-color: var(--dnd-red-400) !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   MESSAGES
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Every message row */
+[class*="message-"] {
+  background: transparent !important;
+  border-bottom: 1px solid rgba(180,140,60,0.12) !important;
+  padding: 6px 16px !important;
+}
+
+[class*="message-"]:hover {
+  background: rgba(180,140,60,0.08) !important;
+}
+
+/* Message "cozy" group first item */
+[class*="cozyMessage"] [class*="header-"] {
+  margin-bottom: 2px;
+}
+
+/* Embeds */
+[class*="embed-"] {
+  background: var(--dnd-parchment-200) !important;
+  border-left: 4px solid var(--dnd-gold-400) !important;
+  border-radius: 4px !important;
+  box-shadow: var(--dnd-shadow-sm) !important;
+}
+
+[class*="embedTitle"] {
+  font-family: var(--dnd-font-display) !important;
+  color: var(--dnd-ink-900) !important;
+}
+
+/* Code blocks */
+[class*="markup"] code,
+[class*="markup"] pre {
+  background: var(--dnd-parchment-300) !important;
+  border: 1px solid var(--dnd-gold-400) !important;
+  border-radius: 4px !important;
+  font-family: 'Courier New', monospace !important;
+  color: var(--dnd-ink-800) !important;
+}
+
+/* Blockquote */
+[class*="blockquote"] {
+  border-left: 4px solid var(--dnd-red-600) !important;
+  background: rgba(180,140,60,0.10) !important;
+}
+
+/* Mention */
+[class*="mention"] {
+  background: var(--dnd-red-200) !important;
+  color: var(--dnd-red-600) !important;
+  border-radius: 4px !important;
+  font-family: var(--dnd-font-display) !important;
+  font-size: 0.9em !important;
+}
+
+/* Reaction bubbles */
+[class*="reaction-"] {
+  background: var(--dnd-parchment-300) !important;
+  border: 1px solid var(--dnd-gold-400) !important;
+  border-radius: 12px !important;
+  font-family: var(--dnd-font-body) !important;
+}
+
+[class*="reaction-"][class*="reacted-"] {
+  background: var(--dnd-gold-100) !important;
+  border-color: var(--dnd-gold-600) !important;
+  color: var(--dnd-gold-600) !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   MESSAGE INPUT BAR
+   ───────────────────────────────────────────────────────────────────────────── */
+
+[class*="chatContent-"],
+[class*="form-"] {
+  background: var(--dnd-parchment-100) !important;
+  border-top: 2px solid var(--dnd-gold-400) !important;
+  background-image: none !important;
+}
+
+[class*="textArea-"],
+[class*="slateTextArea"],
+[class*="inner-"] > [class*="textArea"] {
+  background: var(--dnd-parchment-200) !important;
+  border: 1px solid var(--dnd-gold-400) !important;
+  border-radius: 6px !important;
+  box-shadow: var(--dnd-shadow-inset) !important;
+  font-family: var(--dnd-font-body) !important;
+  font-size: 16px !important;
+  color: var(--dnd-ink-800) !important;
+}
+
+[class*="textArea-"] [data-slate-placeholder] {
+  font-family: var(--dnd-font-body) !important;
+  font-style: italic;
+  color: var(--dnd-parchment-500) !important;
+}
+
+/* Buttons in the textarea toolbar */
+[class*="toolbar-"] button,
+[class*="buttons-"] button {
+  color: var(--dnd-parchment-500) !important;
+}
+
+[class*="toolbar-"] button:hover,
+[class*="buttons-"] button:hover {
+  color: var(--dnd-gold-400) !important;
+  background: rgba(180,140,60,0.15) !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   MEMBERS LIST (right panel)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+[class*="membersWrap-"],
+[class*="members-"] {
+  background: var(--dnd-parchment-200) !important;
+  border-left: 2px solid var(--dnd-gold-600) !important;
+}
+
+[class*="membersGroup"] {
+  font-family: var(--dnd-font-display) !important;
+  font-size: 11px !important;
+  letter-spacing: 0.10em !important;
+  text-transform: uppercase !important;
+  color: var(--dnd-gold-600) !important;
+  border-bottom: 1px solid rgba(180,140,60,0.3) !important;
+  padding-bottom: 4px !important;
+}
+
+[class*="member-"] {
+  border-radius: 4px !important;
+}
+
+[class*="member-"]:hover {
+  background: rgba(180,140,60,0.18) !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   CHANNEL HEADER / TITLE BAR
+   ───────────────────────────────────────────────────────────────────────────── */
+
+[class*="titleWrapper-"],
+[class*="header-"][class*="ChannelHeader"],
+header[class*="header-"] {
+  background: var(--dnd-parchment-200) !important;
+  border-bottom: 3px solid var(--dnd-gold-400) !important;
+  box-shadow: 0 2px 8px rgba(120,80,20,0.18) !important;
+}
+
+[class*="titleWrapper-"] [class*="name-"],
+[class*="headerText-"] {
+  font-family: var(--dnd-font-display) !important;
+  font-size: 18px !important;
+  color: var(--dnd-ink-900) !important;
+}
+
+/* Channel icon in header */
+[class*="titleWrapper-"] [class*="icon-"] {
+  color: var(--dnd-gold-600) !important;
+}
+
+/* Header topic */
+[class*="topic-"] {
+  font-family: var(--dnd-font-body) !important;
+  font-style: italic;
+  color: var(--dnd-ink-600) !important;
+  font-size: 13px !important;
+}
+
+/* Header divider */
+[class*="divider-"] {
+  background: var(--dnd-gold-400) !important;
+  height: 1px !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   MODALS & POPOUTS — aged scroll feel
+   ───────────────────────────────────────────────────────────────────────────── */
+
+[class*="modal-"],
+[class*="popout-"],
+[class*="layerContainer"] [class*="layer-"] {
+  background: var(--dnd-parchment-100) !important;
+  border: 2px solid var(--dnd-gold-600) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 32px rgba(30,10,0,0.45), inset 0 0 40px rgba(120,80,20,0.08) !important;
+}
+
+[class*="modalHeader-"],
+[class*="header-"][class*="modal"] {
+  background: var(--dnd-parchment-200) !important;
+  border-bottom: 2px solid var(--dnd-gold-500) !important;
+  border-radius: 6px 6px 0 0 !important;
+  font-family: var(--dnd-font-display) !important;
+}
+
+[class*="modalFooter-"],
+[class*="footer-"][class*="modal"] {
+  background: var(--dnd-parchment-200) !important;
+  border-top: 2px solid var(--dnd-gold-500) !important;
+  border-radius: 0 0 6px 6px !important;
+}
+
+/* Context menus */
+[class*="contextMenu-"],
+[role="menu"] {
+  background: var(--dnd-parchment-100) !important;
+  border: 1px solid var(--dnd-gold-600) !important;
+  border-radius: 6px !important;
+  box-shadow: var(--dnd-shadow-md) !important;
+}
+
+[class*="item-"][role="menuitem"] {
+  font-family: var(--dnd-font-body) !important;
+  color: var(--dnd-ink-800) !important;
+  font-size: 15px !important;
+}
+
+[class*="item-"][role="menuitem"]:hover {
+  background: rgba(180,140,60,0.20) !important;
+  color: var(--dnd-ink-900) !important;
+}
+
+[class*="item-"][class*="danger"]:hover {
+  background: var(--dnd-red-200) !important;
+  color: var(--dnd-red-600) !important;
+}
+
+/* Separator in menus */
+[role="separator"],
+[class*="separator-"] {
+  background: var(--dnd-gold-400) !important;
+  opacity: 0.5;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   BUTTONS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Primary (brand) buttons */
+[class*="lookFilled-"][class*="colorBrand-"],
+button[class*="colorBrand-"] {
+  background: var(--dnd-red-600) !important;
+  color: var(--dnd-parchment-100) !important;
+  font-family: var(--dnd-font-display) !important;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--dnd-red-400) !important;
+  box-shadow: var(--dnd-shadow-sm) !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+
+[class*="lookFilled-"][class*="colorBrand-"]:hover,
+button[class*="colorBrand-"]:hover {
+  background: var(--dnd-red-400) !important;
+}
+
+/* Outlined / ghost buttons */
+[class*="lookOutlined-"],
+button[class*="lookOutlined-"] {
+  border: 1px solid var(--dnd-gold-600) !important;
+  color: var(--dnd-ink-800) !important;
+  font-family: var(--dnd-font-display) !important;
+}
+
+[class*="lookOutlined-"]:hover {
+  background: rgba(180,140,60,0.15) !important;
+}
+
+/* Danger buttons */
+[class*="colorRed-"],
+button[class*="colorRed-"] {
+  background: var(--dnd-red-600) !important;
+  font-family: var(--dnd-font-display) !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   TOOLTIPS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+[class*="tooltip-"] {
+  background: var(--dnd-ink-900) !important;
+  color: var(--dnd-parchment-200) !important;
+  font-family: var(--dnd-font-body) !important;
+  font-size: 13px !important;
+  border: 1px solid var(--dnd-gold-600) !important;
+  border-radius: 4px !important;
+  box-shadow: var(--dnd-shadow-md) !important;
+}
+
+[class*="tooltipPointer-"] {
+  border-top-color: var(--dnd-ink-900) !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SETTINGS PAGES
+   ───────────────────────────────────────────────────────────────────────────── */
+
+[class*="contentRegion-"],
+[class*="contentColumn-"] {
+  background: var(--dnd-parchment-100) !important;
+}
+
+[class*="sidebar-"][class*="settings"] {
+  background: var(--dnd-parchment-200) !important;
+  border-right: 2px solid var(--dnd-gold-600) !important;
+}
+
+[class*="item-"][class*="settings"] {
+  font-family: var(--dnd-font-body) !important;
+  color: var(--dnd-ink-700) !important;
+  border-radius: 4px !important;
+}
+
+[class*="item-"][class*="settings"]:hover {
+  background: rgba(180,140,60,0.18) !important;
+  color: var(--dnd-ink-900) !important;
+}
+
+[class*="item-"][class*="settings"][class*="selected"] {
+  background: rgba(180,140,60,0.30) !important;
+  color: var(--dnd-ink-900) !important;
+  border-left: 3px solid var(--dnd-gold-400) !important;
+  font-family: var(--dnd-font-display) !important;
+}
+
+[class*="categoryHeader-"] {
+  font-family: var(--dnd-font-display) !important;
+  color: var(--dnd-gold-600) !important;
+  letter-spacing: 0.06em;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+}
+
+/* Inputs in settings */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+input[class*="input-"] {
+  background: var(--dnd-parchment-200) !important;
+  border: 1px solid var(--dnd-gold-400) !important;
+  border-radius: 4px !important;
+  color: var(--dnd-ink-800) !important;
+  font-family: var(--dnd-font-body) !important;
+  box-shadow: var(--dnd-shadow-inset) !important;
+}
+
+input:focus {
+  border-color: var(--dnd-gold-600) !important;
+  box-shadow: 0 0 0 2px rgba(180,140,60,0.25), var(--dnd-shadow-inset) !important;
+}
+
+/* Toggles */
+[class*="track-"] {
+  background: var(--dnd-parchment-400) !important;
+}
+
+[class*="track-"][class*="checked-"] {
+  background: var(--dnd-red-600) !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   NOTICE BAR / SYSTEM MESSAGES
+   ───────────────────────────────────────────────────────────────────────────── */
+
+[class*="barBase-"],
+[class*="noticeBase-"] {
+  background: var(--dnd-parchment-200) !important;
+  border-bottom: 2px solid var(--dnd-gold-400) !important;
+  color: var(--dnd-ink-800) !important;
+  font-family: var(--dnd-font-body) !important;
+}
+
+/* System message / dividers in chat */
+[class*="divider-"][class*="isUnread"] {
+  color: var(--dnd-red-600) !important;
+  font-family: var(--dnd-font-display) !important;
+}
+
+[class*="divider-"][class*="isUnread"]::before,
+[class*="divider-"][class*="isUnread"]::after {
+  background: var(--dnd-red-600) !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SCROLLBARS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--dnd-gold-400);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--dnd-gold-600);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   ORNAMENTAL FLOURISH — the "chapter divider" for large unread bar
+   ───────────────────────────────────────────────────────────────────────────── */
+
+[class*="divider-"][class*="isUnread"] [class*="content-"] {
+  font-family: var(--dnd-font-display) !important;
+  font-size: 11px !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
+  color: var(--dnd-red-600) !important;
+  padding: 0 12px !important;
+  background: var(--dnd-parchment-100) !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   CALL / VOICE UI
+   ───────────────────────────────────────────────────────────────────────────── */
+
+[class*="callContainer-"],
+[class*="videoLayerContainer-"] {
+  background: var(--dnd-ink-900) !important;
+  border: 2px solid var(--dnd-gold-600) !important;
+}
+
+[class*="participantsButton-"],
+[class*="actionButtons-"] button {
+  background: var(--dnd-sidebar-mid) !important;
+  color: var(--dnd-parchment-200) !important;
+  border: 1px solid var(--dnd-gold-600) !important;
+}
+
+[class*="participantsButton-"]:hover,
+[class*="actionButtons-"] button:hover {
+  background: var(--dnd-sidebar-hi) !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   STATUS INDICATORS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Keep status colours mostly standard but with slight warmth */
+[class*="status-"][class*="online"] {
+  background: #4e8b3e !important;
+}
+
+[class*="status-"][class*="idle"] {
+  background: var(--dnd-gold-400) !important;
+}
+
+[class*="status-"][class*="dnd"] {
+  background: var(--dnd-red-600) !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   AVATARS — subtle vignette / portrait-frame feel
+   ───────────────────────────────────────────────────────────────────────────── */
+
+[class*="avatar-"] img,
+[class*="avatarStack-"] img {
+  border: 1px solid var(--dnd-gold-400);
+  box-shadow: 0 0 0 1px rgba(30,10,0,0.2);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   PINNED MESSAGES / INBOX / SEARCH
+   ───────────────────────────────────────────────────────────────────────────── */
+
+[class*="pinnedMessages-"],
+[class*="searchResult-"] {
+  background: var(--dnd-parchment-100) !important;
+  border: 1px solid var(--dnd-gold-400) !important;
+  border-radius: 6px !important;
+}
+
+[class*="pinnedMessages-"] [class*="header-"] {
+  font-family: var(--dnd-font-display) !important;
+  color: var(--dnd-ink-900) !important;
+  border-bottom: 1px solid var(--dnd-gold-400) !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   AUTOCOMPLETE DROPDOWN
+   ───────────────────────────────────────────────────────────────────────────── */
+
+[class*="autocomplete-"] {
+  background: var(--dnd-parchment-100) !important;
+  border: 1px solid var(--dnd-gold-600) !important;
+  border-radius: 6px !important;
+  box-shadow: var(--dnd-shadow-md) !important;
+}
+
+[class*="autocomplete-"] [class*="selected"],
+[class*="autocomplete-"] [class*="option-"]:hover {
+  background: rgba(180,140,60,0.20) !important;
+}
+
+[class*="autocomplete-"] [class*="categoryHeader-"] {
+  font-family: var(--dnd-font-display) !important;
+  color: var(--dnd-gold-600) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.10em !important;
+  text-transform: uppercase !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   USER PROFILE POPOUT
+   ───────────────────────────────────────────────────────────────────────────── */
+
+[class*="userPopout-"],
+[class*="profileBio-"] {
+  background: var(--dnd-parchment-100) !important;
+  border: 2px solid var(--dnd-gold-600) !important;
+  border-radius: 8px !important;
+  box-shadow: var(--dnd-shadow-md) !important;
+}
+
+[class*="userPopoutBanner"] {
+  border-radius: 6px 6px 0 0 !important;
+}
+
+[class*="userPopout-"] [class*="username"] {
+  font-family: var(--dnd-font-display) !important;
+  font-size: 17px !important;
+  color: var(--dnd-ink-900) !important;
+}
+
+[class*="userPopout-"] [class*="roleCircle-"],
+[class*="userPopout-"] [class*="roles-"] {
+  background: var(--dnd-parchment-200) !important;
+  border: 1px solid var(--dnd-gold-400) !important;
+}
+
+[class*="note-"] textarea {
+  background: var(--dnd-parchment-200) !important;
+  border: 1px solid var(--dnd-gold-400) !important;
+  border-radius: 4px !important;
+  color: var(--dnd-ink-800) !important;
+  font-family: var(--dnd-font-body) !important;
+  font-style: italic;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   BADGES & TAGS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+[class*="botTag-"],
+[class*="tag-"] {
+  background: var(--dnd-red-600) !important;
+  color: var(--dnd-parchment-100) !important;
+  font-family: var(--dnd-font-display) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.06em !important;
+  border-radius: 3px !important;
+  text-transform: uppercase !important;
+}
+
+[class*="numberBadge-"],
+[class*="badge-"] {
+  background: var(--dnd-red-600) !important;
+  font-family: var(--dnd-font-display) !important;
+  color: var(--dnd-parchment-100) !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   NICE SMALL TOUCHES
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Loading spinner: gold */
+[class*="spinner-"] svg circle {
+  stroke: var(--dnd-gold-400) !important;
+}
+
+/* Keybinding badges */
+[class*="keybind-"] {
+  background: var(--dnd-parchment-300) !important;
+  border: 1px solid var(--dnd-gold-400) !important;
+  color: var(--dnd-ink-700) !important;
+  font-family: 'Courier New', monospace !important;
+}
+
+/* Attachment / upload area */
+[class*="dragger-"] {
+  background: var(--dnd-parchment-200) !important;
+  border: 2px dashed var(--dnd-gold-400) !important;
+  color: var(--dnd-ink-600) !important;
+}
+
+/* Emoji picker */
+[class*="emojiPicker-"],
+[class*="emojiPickerInExpressionPicker"] {
+  background: var(--dnd-parchment-100) !important;
+  border: 1px solid var(--dnd-gold-600) !important;
+  border-radius: 8px !important;
+}
+
+[class*="emojiCategoryHeader-"] {
+  font-family: var(--dnd-font-display) !important;
+  color: var(--dnd-gold-600) !important;
+}
+
+/* Search bar */
+[class*="searchBar-"] {
+  background: var(--dnd-parchment-200) !important;
+  border: 1px solid var(--dnd-gold-400) !important;
+  border-radius: 4px !important;
+}
+
+/* Nitro / boosting upsell strips — de-emphasise */
+[class*="premiumGuildUpgrade"],
+[class*="subscriberGoalCard-"] {
+  opacity: 0.6;
+  filter: sepia(0.5);
+}
