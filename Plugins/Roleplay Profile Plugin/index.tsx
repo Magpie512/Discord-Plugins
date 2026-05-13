@@ -4,22 +4,15 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * Plugin: RoleplayProfiles
- * Author: YourName
+ * Author: mg.pie
  *
  * Allows users to create multiple RP character profiles, share them
  * as Discord messages, and have other plugin users see them as
  * rendered profile cards.
- *
- * ──────────────────────────────────────────────────────────────
- * INSTALL: Drop this folder into your Vencord `src/plugins/` dir
- * and rebuild. Requires the ChatButtons and MessageAccessories
- * APIs to be enabled (they are on by default in Vencord).
- * ──────────────────────────────────────────────────────────────
  */
 
 import { addChatBarButton, removeChatBarButton } from "@api/ChatButtons";
 import { addMessageAccessory, removeMessageAccessory } from "@api/MessageAccessories";
-import { addContextMenuPatch, NavContextMenuPatchCallback, removeContextMenuPatch } from "@api/ContextMenu";
 import { definePluginSettings } from "@api/Settings";
 import { Devs } from "@utils/constants";
 import {
@@ -35,20 +28,21 @@ import {
 import definePlugin, { OptionType } from "@utils/types";
 import {
     Button,
-    Forms,
-    Menu,
     React,
     Text,
     TextArea,
     TextInput,
-    Tooltip,
+    Toasts,
+    useCallback,
     useEffect,
     useState,
 } from "@webpack/common";
-import { getCurrentUser, sendMessage } from "@utils/discord";
+import { getCurrentUser } from "@webpack/common";
+import { findByProps } from "@webpack";
+import { instead } from "@utils/monkeyPatch";
 
 // ══════════════════════════════════════════════════════════════
-// TYPES
+// TYPES & CONSTANTS
 // ══════════════════════════════════════════════════════════════
 
 interface CustomField {
@@ -68,7 +62,7 @@ interface CharacterProfile {
     personality: string;
     backstory: string;
     avatarUrl: string;
-    accentColor: string;      // hex e.g. "#7B68EE"
+    accentColor: string;
     tags: string[];
     customFields: CustomField[];
     createdAt: number;
@@ -85,1003 +79,448 @@ interface SavedProfile {
 interface PluginData {
     myProfiles: CharacterProfile[];
     activeProfileId: string | null;
-    savedProfiles: SavedProfile[];   // profiles discovered from others
+    savedProfiles: SavedProfile[];
 }
 
-// ══════════════════════════════════════════════════════════════
-// CONSTANTS
-// ══════════════════════════════════════════════════════════════
-
-/** Marker embedded in shared messages so the plugin can detect them. */
 const RP_MARKER = "RP_CARD:";
-
-const DEFAULT_DATA: PluginData = {
-    myProfiles: [],
-    activeProfileId: null,
-    savedProfiles: [],
-};
-
+const ACCESSORY_KEY = "rp-profile-card";
+const DEFAULT_DATA: PluginData = { myProfiles: [], activeProfileId: null, savedProfiles: [] };
 const DEFAULT_PROFILE: Omit<CharacterProfile, "id" | "createdAt" | "updatedAt"> = {
-    name: "",
-    pronouns: "",
-    species: "",
-    age: "",
-    height: "",
-    occupation: "",
-    description: "",
-    personality: "",
-    backstory: "",
-    avatarUrl: "",
-    accentColor: "#7B68EE",
-    tags: [],
-    customFields: [],
+    name: "", pronouns: "", species: "", age: "", height: "", occupation: "",
+    description: "", personality: "", backstory: "", avatarUrl: "",
+    accentColor: "#7B68EE", tags: [], customFields: [],
 };
 
 // ══════════════════════════════════════════════════════════════
-// SETTINGS
+// SETTINGS & DATA HELPERS
 // ══════════════════════════════════════════════════════════════
 
 const settings = definePluginSettings({
     data: {
         type: OptionType.STRING,
-        description: "Plugin data (profiles stored as JSON — do not edit manually)",
+        description: "JSON Data",
         default: JSON.stringify(DEFAULT_DATA),
         hidden: true,
     },
     showShareButton: {
         type: OptionType.BOOLEAN,
-        description: "Show a share button on your own profile cards",
+        description: "Show share button on your own cards",
         default: true,
     },
     compactCards: {
         type: OptionType.BOOLEAN,
-        description: "Show compact profile cards in chat (less scrolling)",
+        description: "Use compact view by default",
         default: false,
     },
 });
 
-// ══════════════════════════════════════════════════════════════
-// DATA HELPERS
-// ══════════════════════════════════════════════════════════════
-
 function getData(): PluginData {
-    try {
-        return JSON.parse(settings.store.data) as PluginData;
-    } catch {
-        return { ...DEFAULT_DATA };
-    }
+    try { return JSON.parse(settings.store.data); }
+    catch { return { ...DEFAULT_DATA }; }
 }
 
-function saveData(data: PluginData): void {
+function saveData(data: PluginData) {
     settings.store.data = JSON.stringify(data);
 }
 
-function genId(): string {
-    return `rp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+/**
+ * Read-modify-write helper. Accepts an updater function so callers
+ * never have to remember to call saveData() themselves.
+ */
+function updateData(updater: (d: PluginData) => void): PluginData {
+    const d = getData();
+    updater(d);
+    saveData(d);
+    return d;
 }
 
-function newProfile(): CharacterProfile {
-    const now = Date.now();
-    return { ...DEFAULT_PROFILE, id: genId(), createdAt: now, updatedAt: now, tags: [], customFields: [] };
-}
+function newProfileId() { return `rp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`; }
 
-// ══════════════════════════════════════════════════════════════
-// SHARE / PARSE HELPERS
-// ══════════════════════════════════════════════════════════════
-
-/** Encode a profile into a shareable message string. */
 function buildShareMessage(profile: CharacterProfile, username: string): string {
-    const tagLine = profile.tags.length ? `\`${profile.tags.join("` `")}\`` : "";
-    const customLines = profile.customFields
-        .filter(f => f.key && f.value)
-        .map(f => `**${f.key}:** ${f.value}`)
-        .join("\n");
-
-    const parts: string[] = [
-        `━━━━━━━━━━━━ 🎭 Character Profile ━━━━━━━━━━━━`,
-        `**${profile.name || "Unnamed"}**${profile.pronouns ? ` *(${profile.pronouns})*` : ""}`,
-        [profile.species, profile.age, profile.height, profile.occupation]
-            .filter(Boolean)
-            .join(" · "),
-        tagLine,
-        profile.description ? `\n📖 **Description**\n${profile.description}` : "",
-        profile.personality ? `\n💫 **Personality**\n${profile.personality}` : "",
-        profile.backstory ? `\n📜 **Backstory**\n${profile.backstory}` : "",
-        customLines ? `\n${customLines}` : "",
-        `\n*Shared by ${username}*`,
-        // Machine-readable data for plugin users ↓
-        `\n${RP_MARKER}${btoa(unescape(encodeURIComponent(JSON.stringify({ profile, username }))))}`,
-        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-    ];
-
-    return parts.filter(p => p !== "").join("\n");
+    const payload = btoa(unescape(encodeURIComponent(JSON.stringify({ profile, username }))));
+    return `━━━━━━━━━━━━ 🎭 Character Profile ━━━━━━━━━━━━\n**${profile.name}**\n*Shared by ${username}*\n\n${RP_MARKER}${payload}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 }
 
-/** Extract a profile from a message's raw content, if present. */
 function extractProfile(content: string): { profile: CharacterProfile; username: string } | null {
     const idx = content.indexOf(RP_MARKER);
     if (idx === -1) return null;
     try {
         const raw = content.slice(idx + RP_MARKER.length).split(/\s/)[0];
-        const json = decodeURIComponent(escape(atob(raw)));
-        return JSON.parse(json);
-    } catch {
-        return null;
-    }
+        return JSON.parse(decodeURIComponent(escape(atob(raw))));
+    } catch { return null; }
 }
 
-// ══════════════════════════════════════════════════════════════
-// STYLE HELPERS
-// ══════════════════════════════════════════════════════════════
-
-/** Convert hex colour to an rgba with given opacity. */
 function hexToRgba(hex: string, alpha: number): string {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r},${g},${b},${alpha})`;
+    const n = parseInt(hex.replace("#", ""), 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }
 
 // ══════════════════════════════════════════════════════════════
-// COMPONENTS — INLINE STYLES (no external CSS needed)
+// COMPONENTS
 // ══════════════════════════════════════════════════════════════
 
-// ─── Profile Card (rendered in chat) ──────────────────────────
-
-function ProfileCard({
-    profile,
-    username,
-    compact = false,
-    onSave,
-    onShare,
-    isOwn = false,
-}: {
+interface ProfileCardProps {
     profile: CharacterProfile;
     username: string;
     compact?: boolean;
     onSave?: () => void;
     onShare?: () => void;
-    isOwn?: boolean;
-}) {
+    isOwn: boolean;
+}
+
+function ProfileCard({ profile, username, compact, onSave, onShare, isOwn }: ProfileCardProps) {
     const accent = profile.accentColor || "#7B68EE";
     const [expanded, setExpanded] = useState(!compact);
 
-    const cardStyle: React.CSSProperties = {
-        background: `linear-gradient(135deg, ${hexToRgba(accent, 0.08)} 0%, var(--background-secondary) 100%)`,
-        border: `1.5px solid ${hexToRgba(accent, 0.4)}`,
-        borderRadius: "12px",
-        padding: "14px 16px",
-        marginTop: "6px",
-        maxWidth: "520px",
-        fontFamily: "var(--font-primary)",
-        position: "relative",
-        overflow: "hidden",
+    return (
+        <div style={{
+            background: `linear-gradient(135deg, ${hexToRgba(accent, 0.08)} 0%, var(--background-secondary) 100%)`,
+            border: `1.5px solid ${hexToRgba(accent, 0.4)}`,
+            borderRadius: "12px", padding: "14px 16px", marginTop: "6px",
+            maxWidth: "520px", position: "relative", overflow: "hidden",
+        }}>
+            {/* Accent bar */}
+            <div style={{ position: "absolute", top: 0, left: 0, width: "4px", height: "100%", background: accent }} />
+
+            {/* Header row */}
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px" }}>
+                {profile.avatarUrl
+                    ? <img src={profile.avatarUrl} alt={profile.name} style={{ width: "52px", height: "52px", borderRadius: "50%", border: `2px solid ${accent}`, objectFit: "cover" }} />
+                    : <div style={{ width: "52px", height: "52px", borderRadius: "50%", background: hexToRgba(accent, 0.2), display: "flex", justifyContent: "center", alignItems: "center", fontSize: "22px" }}>🎭</div>
+                }
+                <div>
+                    <div style={{ color: "var(--header-primary)", fontWeight: 700, fontSize: "16px" }}>
+                        {profile.name}{" "}
+                        {profile.pronouns && <span style={{ color: "var(--text-muted)", fontWeight: 400, fontSize: "13px" }}>({profile.pronouns})</span>}
+                    </div>
+                    <div style={{ color: "var(--text-muted)", fontSize: "12px" }}>
+                        {[profile.species, profile.age && `Age ${profile.age}`, profile.height, profile.occupation].filter(Boolean).join(" · ")}
+                    </div>
+                    <div style={{ color: "var(--text-muted)", fontSize: "11px", marginTop: "2px" }}>Shared by {username}</div>
+                </div>
+            </div>
+
+            {compact && (
+                <Button size={Button.Sizes.TINY} look={Button.Looks.LINK} onClick={() => setExpanded(e => !e)}>
+                    {expanded ? "▲ Show Less" : "▼ Show More"}
+                </Button>
+            )}
+
+            {expanded && (
+                <div style={{ marginTop: "10px", borderTop: `1px solid ${hexToRgba(accent, 0.15)}`, paddingTop: "10px", fontSize: "13px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {profile.description && <div><strong>Description:</strong> {profile.description}</div>}
+                    {profile.personality && <div><strong>Personality:</strong> {profile.personality}</div>}
+                    {profile.backstory && <div><strong>Backstory:</strong> {profile.backstory}</div>}
+                    {profile.customFields.filter(f => f.key).map((f, i) => (
+                        <div key={i}><strong>{f.key}:</strong> {f.value}</div>
+                    ))}
+                    {profile.tags.length > 0 && (
+                        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginTop: "4px" }}>
+                            {profile.tags.map((tag, i) => (
+                                <span key={i} style={{ background: hexToRgba(accent, 0.2), color: accent, borderRadius: "999px", padding: "1px 8px", fontSize: "11px" }}>{tag}</span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
+                {!isOwn && onSave && <Button size={Button.Sizes.TINY} onClick={onSave}>⭐ Save Profile</Button>}
+                {isOwn && onShare && settings.store.showShareButton && <Button size={Button.Sizes.TINY} onClick={onShare}>📤 Re-share</Button>}
+            </div>
+        </div>
+    );
+}
+
+// ══════════════════════════════════════════════════════════════
+// MODALS
+// ══════════════════════════════════════════════════════════════
+
+function ProfileManagerModal({ modalProps }: { modalProps: ModalProps }) {
+    const [data, setData] = useState(getData());
+    const [tab, setTab] = useState<"mine" | "saved">("mine");
+
+    const refresh = useCallback(() => setData(getData()), []);
+
+    const setActive = (id: string | null) => {
+        updateData(d => { d.activeProfileId = id; });
+        refresh();
     };
 
-    const accentBarStyle: React.CSSProperties = {
-        position: "absolute",
-        top: 0,
-        left: 0,
-        width: "4px",
-        height: "100%",
-        background: accent,
-        borderRadius: "12px 0 0 12px",
+    const deleteProfile = (id: string) => {
+        updateData(d => { d.myProfiles = d.myProfiles.filter(p => p.id !== id); if (d.activeProfileId === id) d.activeProfileId = null; });
+        refresh();
     };
 
-    const headerRowStyle: React.CSSProperties = {
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        marginBottom: "8px",
+    const deleteSaved = (profileId: string) => {
+        updateData(d => { d.savedProfiles = d.savedProfiles.filter(s => s.profile.id !== profileId); });
+        refresh();
     };
 
-    const avatarStyle: React.CSSProperties = {
-        width: "52px",
-        height: "52px",
-        borderRadius: "50%",
-        border: `2px solid ${accent}`,
-        objectFit: "cover",
-        flexShrink: 0,
-        background: hexToRgba(accent, 0.2),
-    };
-
-    const avatarPlaceholderStyle: React.CSSProperties = {
-        ...avatarStyle,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: "22px",
-    };
-
-    const nameStyle: React.CSSProperties = {
-        color: "var(--header-primary)",
-        fontWeight: 700,
-        fontSize: "16px",
-        lineHeight: 1.2,
-    };
-
-    const metaStyle: React.CSSProperties = {
-        color: "var(--text-muted)",
-        fontSize: "12px",
-        marginTop: "2px",
-    };
-
-    const tagStyle: React.CSSProperties = {
-        display: "inline-block",
-        background: hexToRgba(accent, 0.18),
-        color: accent,
-        borderRadius: "4px",
-        padding: "1px 7px",
-        fontSize: "11px",
-        fontWeight: 600,
-        marginRight: "4px",
-        marginTop: "4px",
-    };
-
-    const sectionStyle: React.CSSProperties = {
-        marginTop: "10px",
-        borderTop: `1px solid ${hexToRgba(accent, 0.15)}`,
-        paddingTop: "10px",
-    };
-
-    const sectionLabelStyle: React.CSSProperties = {
-        color: accent,
-        fontSize: "11px",
-        fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: "0.08em",
-        marginBottom: "3px",
-    };
-
-    const bodyTextStyle: React.CSSProperties = {
-        color: "var(--text-normal)",
-        fontSize: "13px",
-        lineHeight: 1.5,
-        whiteSpace: "pre-wrap",
-    };
-
-    const btnRowStyle: React.CSSProperties = {
-        display: "flex",
-        gap: "6px",
-        marginTop: "10px",
-        flexWrap: "wrap",
-    };
-
-    const metaItems = [profile.species, profile.age, profile.height, profile.occupation].filter(Boolean);
+    const openEditor = (initial?: CharacterProfile) =>
+        openModal(p => <ProfileEditorModal modalProps={p} initial={initial} onSave={refresh} />);
 
     return (
-        <div style={cardStyle}>
-            <div style={accentBarStyle} />
-            {/* Header */}
-            <div style={{ paddingLeft: "8px" }}>
-                <div style={headerRowStyle}>
-                    {profile.avatarUrl ? (
-                        <img src={profile.avatarUrl} alt={profile.name} style={avatarStyle} />
-                    ) : (
-                        <div style={avatarPlaceholderStyle}>🎭</div>
-                    )}
-                    <div>
-                        <div style={nameStyle}>
-                            {profile.name || "Unnamed Character"}
-                            {profile.pronouns && (
-                                <span style={{ color: "var(--text-muted)", fontWeight: 400, fontSize: "13px" }}>
-                                    {" "}({profile.pronouns})
-                                </span>
-                            )}
-                        </div>
-                        {metaItems.length > 0 && (
-                            <div style={metaStyle}>{metaItems.join(" · ")}</div>
-                        )}
-                        <div style={{ marginTop: "4px" }}>
-                            {profile.tags.map(t => <span key={t} style={tagStyle}>{t}</span>)}
-                        </div>
-                    </div>
+        <ModalRoot {...modalProps} size={ModalSize.MEDIUM}>
+            <ModalHeader>
+                <Text variant="heading-lg/semibold">🎭 Roleplay Profiles</Text>
+                <ModalCloseButton onClick={modalProps.onClose} />
+            </ModalHeader>
+            <ModalContent style={{ padding: "16px" }}>
+                <div style={{ display: "flex", gap: "10px", marginBottom: "15px" }}>
+                    <Button look={tab === "mine" ? Button.Looks.FILLED : Button.Looks.OUTLINED} onClick={() => setTab("mine")}>My Characters</Button>
+                    <Button look={tab === "saved" ? Button.Looks.FILLED : Button.Looks.OUTLINED} onClick={() => setTab("saved")}>Library ({data.savedProfiles.length})</Button>
                 </div>
 
-                {/* Toggle expand */}
-                {compact && (
-                    <button
-                        onClick={() => setExpanded(e => !e)}
-                        style={{
-                            background: "none",
-                            border: `1px solid ${hexToRgba(accent, 0.3)}`,
-                            color: accent,
-                            borderRadius: "5px",
-                            padding: "2px 8px",
-                            fontSize: "11px",
-                            cursor: "pointer",
-                            marginBottom: "4px",
-                        }}
-                    >
-                        {expanded ? "▲ Collapse" : "▼ View profile"}
-                    </button>
-                )}
-
-                {expanded && (
+                {tab === "mine" && (
                     <>
-                        {profile.description && (
-                            <div style={sectionStyle}>
-                                <div style={sectionLabelStyle}>📖 Description</div>
-                                <div style={bodyTextStyle}>{profile.description}</div>
-                            </div>
+                        <Button color={Button.Colors.BRAND} style={{ width: "100%", marginBottom: "10px" }} onClick={() => openEditor()}>
+                            + Create New Character
+                        </Button>
+                        {data.myProfiles.length === 0 && (
+                            <Text variant="text-sm/normal" color="text-muted" style={{ textAlign: "center", padding: "20px 0" }}>
+                                No characters yet. Create one above!
+                            </Text>
                         )}
-                        {profile.personality && (
-                            <div style={sectionStyle}>
-                                <div style={sectionLabelStyle}>💫 Personality</div>
-                                <div style={bodyTextStyle}>{profile.personality}</div>
+                        {data.myProfiles.map(p => (
+                            <div key={p.id} style={{ background: "var(--background-secondary)", padding: "10px 12px", borderRadius: "8px", marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center", borderLeft: `3px solid ${p.accentColor || "#7B68EE"}` }}>
+                                <div>
+                                    <Text variant="text-md/bold">{p.name || "(Unnamed)"}</Text>
+                                    <Text variant="text-xs/normal" color="text-muted">{[p.species, p.pronouns].filter(Boolean).join(" · ") || "No details"}</Text>
+                                </div>
+                                <div style={{ display: "flex", gap: "5px" }}>
+                                    <Button
+                                        size={Button.Sizes.TINY}
+                                        color={data.activeProfileId === p.id ? Button.Colors.GREEN : Button.Colors.PRIMARY}
+                                        onClick={() => setActive(data.activeProfileId === p.id ? null : p.id)}
+                                    >
+                                        {data.activeProfileId === p.id ? "✓ Active" : "Set Active"}
+                                    </Button>
+                                    <Button size={Button.Sizes.TINY} onClick={() => openEditor(p)}>Edit</Button>
+                                    <Button size={Button.Sizes.TINY} color={Button.Colors.RED} onClick={() => deleteProfile(p.id)}>Delete</Button>
+                                </div>
                             </div>
-                        )}
-                        {profile.backstory && (
-                            <div style={sectionStyle}>
-                                <div style={sectionLabelStyle}>📜 Backstory</div>
-                                <div style={bodyTextStyle}>{profile.backstory}</div>
-                            </div>
-                        )}
-                        {profile.customFields.filter(f => f.key && f.value).length > 0 && (
-                            <div style={sectionStyle}>
-                                <div style={sectionLabelStyle}>✦ Custom Fields</div>
-                                {profile.customFields.filter(f => f.key && f.value).map((f, i) => (
-                                    <div key={i} style={{ fontSize: "13px", color: "var(--text-normal)", marginTop: "2px" }}>
-                                        <span style={{ color: accent, fontWeight: 600 }}>{f.key}:</span> {f.value}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+                        ))}
                     </>
                 )}
 
-                {/* Action buttons */}
-                <div style={btnRowStyle}>
-                    {!isOwn && onSave && (
-                        <button
-                            onClick={onSave}
-                            style={{
-                                background: hexToRgba(accent, 0.18),
-                                border: `1px solid ${hexToRgba(accent, 0.4)}`,
-                                color: accent,
-                                borderRadius: "6px",
-                                padding: "4px 10px",
-                                fontSize: "12px",
-                                cursor: "pointer",
-                                fontWeight: 600,
-                            }}
-                        >
-                            ⭐ Save Profile
-                        </button>
-                    )}
-                    {isOwn && onShare && settings.store.showShareButton && (
-                        <button
-                            onClick={onShare}
-                            style={{
-                                background: hexToRgba(accent, 0.18),
-                                border: `1px solid ${hexToRgba(accent, 0.4)}`,
-                                color: accent,
-                                borderRadius: "6px",
-                                padding: "4px 10px",
-                                fontSize: "12px",
-                                cursor: "pointer",
-                                fontWeight: 600,
-                            }}
-                        >
-                            📤 Share in Chat
-                        </button>
-                    )}
-                </div>
-
-                <div style={{ color: "var(--text-muted)", fontSize: "11px", marginTop: "6px" }}>
-                    Shared by {username} · viewed via RoleplayProfiles plugin
-                </div>
-            </div>
-        </div>
+                {tab === "saved" && (
+                    <>
+                        {data.savedProfiles.length === 0 && (
+                            <Text variant="text-sm/normal" color="text-muted" style={{ textAlign: "center", padding: "20px 0" }}>
+                                No saved profiles yet. Save profiles from chat cards!
+                            </Text>
+                        )}
+                        {data.savedProfiles.map(s => (
+                            <div key={s.profile.id} style={{ background: "var(--background-secondary)", padding: "10px 12px", borderRadius: "8px", marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center", borderLeft: `3px solid ${s.profile.accentColor || "#7B68EE"}` }}>
+                                <div>
+                                    <Text variant="text-md/bold">{s.profile.name || "(Unnamed)"}</Text>
+                                    <Text variant="text-xs/normal" color="text-muted">by {s.username}</Text>
+                                </div>
+                                <Button size={Button.Sizes.TINY} color={Button.Colors.RED} onClick={() => deleteSaved(s.profile.id)}>Remove</Button>
+                            </div>
+                        ))}
+                    </>
+                )}
+            </ModalContent>
+        </ModalRoot>
     );
 }
 
-// ─── Tag Input ─────────────────────────────────────────────────
+function ProfileEditorModal({ modalProps, initial, onSave }: { modalProps: ModalProps; initial?: CharacterProfile; onSave: () => void; }) {
+    const makeBlank = (): CharacterProfile => ({
+        ...DEFAULT_PROFILE,
+        id: newProfileId(),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        tags: [],
+        customFields: [{ key: "", value: "" }],
+    });
 
-function TagInput({ tags, onChange }: { tags: string[]; onChange: (t: string[]) => void }) {
-    const [input, setInput] = useState("");
+    const [draft, setDraft] = useState<CharacterProfile>(initial ? { ...initial } : makeBlank());
+    const [tagInput, setTagInput] = useState(draft.tags.join(", "));
 
-    function addTag() {
-        const trimmed = input.trim().toLowerCase();
-        if (trimmed && !tags.includes(trimmed)) onChange([...tags, trimmed]);
-        setInput("");
-    }
+    const set = <K extends keyof CharacterProfile>(key: K, value: CharacterProfile[K]) =>
+        setDraft(d => ({ ...d, [key]: value, updatedAt: Date.now() }));
 
-    return (
-        <div>
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "6px" }}>
-                {tags.map(t => (
-                    <span
-                        key={t}
-                        style={{
-                            background: "var(--background-modifier-selected)",
-                            borderRadius: "4px",
-                            padding: "2px 8px",
-                            fontSize: "12px",
-                            color: "var(--text-normal)",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "4px",
-                        }}
-                    >
-                        {t}
-                        <button
-                            onClick={() => onChange(tags.filter(x => x !== t))}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: "0", lineHeight: 1 }}
-                        >
-                            ×
-                        </button>
-                    </span>
-                ))}
-            </div>
-            <div style={{ display: "flex", gap: "6px" }}>
-                <TextInput
-                    value={input}
-                    onChange={setInput}
-                    placeholder="Add tag…"
-                    onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
-                    style={{ flex: 1 }}
-                />
-                <Button onClick={addTag} size={Button.Sizes.SMALL}>Add</Button>
-            </div>
-        </div>
-    );
-}
+    const addCustomField = () => setDraft(d => ({ ...d, customFields: [...d.customFields, { key: "", value: "" }] }));
+    const removeCustomField = (i: number) => setDraft(d => ({ ...d, customFields: d.customFields.filter((_, idx) => idx !== i) }));
+    const updateCustomField = (i: number, part: Partial<CustomField>) =>
+        setDraft(d => ({ ...d, customFields: d.customFields.map((f, idx) => idx === i ? { ...f, ...part } : f) }));
 
-// ─── Custom Fields Editor ──────────────────────────────────────
-
-function CustomFieldsEditor({
-    fields,
-    onChange,
-}: {
-    fields: CustomField[];
-    onChange: (f: CustomField[]) => void;
-}) {
-    function update(idx: number, partial: Partial<CustomField>) {
-        const next = fields.map((f, i) => i === idx ? { ...f, ...partial } : f);
-        onChange(next);
-    }
-    function remove(idx: number) { onChange(fields.filter((_, i) => i !== idx)); }
-    function add() { onChange([...fields, { key: "", value: "" }]); }
-
-    return (
-        <div>
-            {fields.map((f, i) => (
-                <div key={i} style={{ display: "flex", gap: "6px", marginBottom: "6px", alignItems: "center" }}>
-                    <TextInput value={f.key} onChange={v => update(i, { key: v })} placeholder="Field name" style={{ flex: 1 }} />
-                    <TextInput value={f.value} onChange={v => update(i, { value: v })} placeholder="Value" style={{ flex: 2 }} />
-                    <Button
-                        onClick={() => remove(i)}
-                        size={Button.Sizes.SMALL}
-                        color={Button.Colors.RED}
-                    >×</Button>
-                </div>
-            ))}
-            <Button onClick={add} size={Button.Sizes.SMALL} look={Button.Looks.LINK}>+ Add Field</Button>
-        </div>
-    );
-}
-
-// ─── Profile Editor Modal ──────────────────────────────────────
-
-function ProfileEditorModal({
-    modalProps,
-    initial,
-    onSave,
-}: {
-    modalProps: ModalProps;
-    initial?: CharacterProfile;
-    onSave: (p: CharacterProfile) => void;
-}) {
-    const [draft, setDraft] = useState<CharacterProfile>(() => initial ? { ...initial } : newProfile());
-    const set = <K extends keyof CharacterProfile>(k: K, v: CharacterProfile[K]) =>
-        setDraft(prev => ({ ...prev, [k]: v }));
-
-    const fieldStyle: React.CSSProperties = { marginBottom: "14px" };
-    const labelStyle: React.CSSProperties = {
-        display: "block",
-        fontSize: "11px",
-        fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: "0.06em",
-        color: "var(--text-muted)",
-        marginBottom: "4px",
+    const handleSave = () => {
+        const final = { ...draft, tags: tagInput.split(",").map(t => t.trim()).filter(Boolean) };
+        updateData(d => {
+            const idx = d.myProfiles.findIndex(p => p.id === final.id);
+            if (idx > -1) d.myProfiles[idx] = final; else d.myProfiles.push(final);
+        });
+        onSave();
+        modalProps.onClose();
     };
 
-    const colorPairs = [
-        "#7B68EE", "#E91E8C", "#00BFA5", "#FF6B35",
-        "#4FC3F7", "#AB47BC", "#66BB6A", "#EF5350",
-    ];
+    const field = (label: string, key: keyof CharacterProfile, placeholder?: string) => (
+        <div style={{ marginBottom: "10px" }}>
+            <Text variant="text-xs/semibold" color="text-muted" style={{ marginBottom: "4px" }}>{label.toUpperCase()}</Text>
+            <TextInput value={String(draft[key] ?? "")} onChange={(v: string) => set(key, v as any)} placeholder={placeholder ?? label} />
+        </div>
+    );
+
+    const textarea = (label: string, key: keyof CharacterProfile, rows = 3) => (
+        <div style={{ marginBottom: "10px" }}>
+            <Text variant="text-xs/semibold" color="text-muted" style={{ marginBottom: "4px" }}>{label.toUpperCase()}</Text>
+            <TextArea value={String(draft[key] ?? "")} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => set(key, e.target.value as any)} placeholder={label} rows={rows} />
+        </div>
+    );
 
     return (
         <ModalRoot {...modalProps} size={ModalSize.LARGE}>
             <ModalHeader>
-                <Text variant="heading-lg/semibold" style={{ flex: 1 }}>
-                    {initial ? "Edit Character" : "New Character"}: {draft.name || "…"}
-                </Text>
+                <Text variant="heading-lg/semibold">{initial ? "Edit" : "New"} Character</Text>
                 <ModalCloseButton onClick={modalProps.onClose} />
             </ModalHeader>
+            <ModalContent style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "2px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+                    {field("Name", "name")}
+                    {field("Pronouns", "pronouns", "e.g. she/her")}
+                    {field("Species / Race", "species")}
+                    {field("Age", "age")}
+                    {field("Height", "height", "e.g. 5'8\"")}
+                    {field("Occupation", "occupation")}
+                </div>
 
-            <ModalContent style={{ padding: "20px", overflowY: "auto" }}>
-                {/* Preview */}
-                <ProfileCard profile={draft} username="You" isOwn={true} />
+                {field("Avatar URL", "avatarUrl", "https://...")}
 
-                <hr style={{ border: "none", borderTop: "1px solid var(--background-modifier-accent)", margin: "20px 0" }} />
-
-                {/* Basic Info */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                    <div style={fieldStyle}>
-                        <label style={labelStyle}>Name *</label>
-                        <TextInput value={draft.name} onChange={v => set("name", v)} placeholder="Character name" />
-                    </div>
-                    <div style={fieldStyle}>
-                        <label style={labelStyle}>Pronouns</label>
-                        <TextInput value={draft.pronouns} onChange={v => set("pronouns", v)} placeholder="e.g. she/her" />
-                    </div>
-                    <div style={fieldStyle}>
-                        <label style={labelStyle}>Species / Race</label>
-                        <TextInput value={draft.species} onChange={v => set("species", v)} placeholder="Human, Elf, Dragon…" />
-                    </div>
-                    <div style={fieldStyle}>
-                        <label style={labelStyle}>Age</label>
-                        <TextInput value={draft.age} onChange={v => set("age", v)} placeholder="Age or age range" />
-                    </div>
-                    <div style={fieldStyle}>
-                        <label style={labelStyle}>Height</label>
-                        <TextInput value={draft.height} onChange={v => set("height", v)} placeholder="e.g. 5'9\"" />
-                    </div>
-                    <div style={fieldStyle}>
-                        <label style={labelStyle}>Occupation</label>
-                        <TextInput value={draft.occupation} onChange={v => set("occupation", v)} placeholder="Mage, Rogue, Engineer…" />
+                <div style={{ marginBottom: "10px" }}>
+                    <Text variant="text-xs/semibold" color="text-muted" style={{ marginBottom: "4px" }}>ACCENT COLOR</Text>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <input type="color" value={draft.accentColor} onChange={e => set("accentColor", e.target.value)} style={{ width: "40px", height: "32px", border: "none", cursor: "pointer", background: "none" }} />
+                        <TextInput value={draft.accentColor} onChange={(v: string) => set("accentColor", v)} style={{ flex: 1 }} />
                     </div>
                 </div>
 
-                <div style={fieldStyle}>
-                    <label style={labelStyle}>Avatar Image URL</label>
-                    <TextInput value={draft.avatarUrl} onChange={v => set("avatarUrl", v)} placeholder="https://i.imgur.com/..." />
+                {textarea("Description", "description")}
+                {textarea("Personality", "personality")}
+                {textarea("Backstory", "backstory", 4)}
+
+                <div style={{ marginBottom: "10px" }}>
+                    <Text variant="text-xs/semibold" color="text-muted" style={{ marginBottom: "4px" }}>TAGS (comma-separated)</Text>
+                    <TextInput value={tagInput} onChange={(v: string) => setTagInput(v)} placeholder="e.g. mage, tragic, loner" />
                 </div>
 
-                {/* Accent colour */}
-                <div style={fieldStyle}>
-                    <label style={labelStyle}>Accent Color</label>
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-                        {colorPairs.map(c => (
-                            <div
-                                key={c}
-                                onClick={() => set("accentColor", c)}
-                                style={{
-                                    width: "24px", height: "24px", borderRadius: "50%",
-                                    background: c, cursor: "pointer",
-                                    outline: draft.accentColor === c ? `3px solid white` : "none",
-                                    outlineOffset: "2px",
-                                }}
-                            />
-                        ))}
-                        <input
-                            type="color"
-                            value={draft.accentColor}
-                            onChange={e => set("accentColor", e.target.value)}
-                            style={{ width: "28px", height: "28px", border: "none", background: "none", cursor: "pointer", padding: 0 }}
-                        />
-                        <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>{draft.accentColor}</span>
+                <div style={{ marginBottom: "10px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                        <Text variant="text-xs/semibold" color="text-muted">CUSTOM FIELDS</Text>
+                        <Button size={Button.Sizes.TINY} onClick={addCustomField}>+ Add Field</Button>
                     </div>
-                </div>
-
-                {/* Tags */}
-                <div style={fieldStyle}>
-                    <label style={labelStyle}>Tags</label>
-                    <TagInput tags={draft.tags} onChange={v => set("tags", v)} />
-                </div>
-
-                {/* Long-form fields */}
-                <div style={fieldStyle}>
-                    <label style={labelStyle}>Physical Description</label>
-                    <TextArea
-                        value={draft.description}
-                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => set("description", e.target.value)}
-                        placeholder="Describe your character's appearance…"
-                        rows={3}
-                    />
-                </div>
-                <div style={fieldStyle}>
-                    <label style={labelStyle}>Personality</label>
-                    <TextArea
-                        value={draft.personality}
-                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => set("personality", e.target.value)}
-                        placeholder="How does your character act and feel?"
-                        rows={3}
-                    />
-                </div>
-                <div style={fieldStyle}>
-                    <label style={labelStyle}>Backstory</label>
-                    <TextArea
-                        value={draft.backstory}
-                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => set("backstory", e.target.value)}
-                        placeholder="Their history, origins, important events…"
-                        rows={4}
-                    />
-                </div>
-
-                {/* Custom fields */}
-                <div style={fieldStyle}>
-                    <label style={labelStyle}>Custom Fields</label>
-                    <CustomFieldsEditor fields={draft.customFields} onChange={v => set("customFields", v)} />
+                    {draft.customFields.map((f, i) => (
+                        <div key={i} style={{ display: "flex", gap: "6px", marginBottom: "6px", alignItems: "center" }}>
+                            <TextInput value={f.key} onChange={(v: string) => updateCustomField(i, { key: v })} placeholder="Field name" style={{ flex: "0 0 35%" }} />
+                            <TextInput value={f.value} onChange={(v: string) => updateCustomField(i, { value: v })} placeholder="Value" style={{ flex: 1 }} />
+                            <Button size={Button.Sizes.TINY} color={Button.Colors.RED} onClick={() => removeCustomField(i)}>✕</Button>
+                        </div>
+                    ))}
                 </div>
             </ModalContent>
-
             <ModalFooter>
-                <Button onClick={modalProps.onClose} look={Button.Looks.LINK} color={Button.Colors.PRIMARY}>Cancel</Button>
-                <Button
-                    onClick={() => {
-                        if (!draft.name.trim()) return alert("Character must have a name!");
-                        onSave({ ...draft, updatedAt: Date.now() });
-                        modalProps.onClose();
-                    }}
-                    color={Button.Colors.BRAND}
-                >
-                    Save Character
-                </Button>
+                <Button color={Button.Colors.BRAND} onClick={handleSave}>Save Character</Button>
+                <Button look={Button.Looks.LINK} onClick={modalProps.onClose}>Cancel</Button>
             </ModalFooter>
         </ModalRoot>
     );
 }
 
-// ─── Profile Manager Modal ─────────────────────────────────────
-// Lists all "my profiles" and lets user CRUD them + switch active
+// ══════════════════════════════════════════════════════════════
+// CHAT BAR BUTTON COMPONENT
+// ══════════════════════════════════════════════════════════════
 
-function ProfileManagerModal({ modalProps }: { modalProps: ModalProps }) {
-    const [data, setData] = useState<PluginData>(getData);
-    const [tab, setTab] = useState<"mine" | "saved">("mine");
-
-    function persist(next: PluginData) { setData(next); saveData(next); }
-
-    function openEditor(profile?: CharacterProfile) {
-        openModal(p => (
-            <ProfileEditorModal
-                modalProps={p}
-                initial={profile}
-                onSave={saved => {
-                    const fresh = getData();
-                    const existing = fresh.myProfiles.findIndex(x => x.id === saved.id);
-                    if (existing !== -1) {
-                        fresh.myProfiles[existing] = saved;
-                    } else {
-                        fresh.myProfiles.push(saved);
-                    }
-                    persist(fresh);
-                    setData({ ...fresh });
-                }}
-            />
-        ));
-    }
-
-    function deleteProfile(id: string) {
-        if (!confirm("Delete this character permanently?")) return;
-        const next = getData();
-        next.myProfiles = next.myProfiles.filter(p => p.id !== id);
-        if (next.activeProfileId === id) next.activeProfileId = null;
-        persist(next);
-        setData({ ...next });
-    }
-
-    function setActive(id: string | null) {
-        const next = getData();
-        next.activeProfileId = id;
-        persist(next);
-        setData({ ...next });
-    }
-
-    function shareProfile(profile: CharacterProfile, channelId: string | null) {
-        if (!channelId) { alert("Open a channel first, then use the chat bar button to share."); return; }
-        const user = getCurrentUser();
-        const msg = buildShareMessage(profile, user?.username ?? "Unknown");
-        sendMessage(channelId, { content: msg });
-    }
-
-    function removeSaved(userId: string, profileId: string) {
-        const next = getData();
-        next.savedProfiles = next.savedProfiles.filter(
-            s => !(s.userId === userId && s.profile.id === profileId)
-        );
-        persist(next);
-        setData({ ...next });
-    }
-
-    const tabStyle = (active: boolean): React.CSSProperties => ({
-        padding: "6px 16px",
-        borderRadius: "6px",
-        border: "none",
-        cursor: "pointer",
-        fontWeight: active ? 700 : 400,
-        background: active ? "var(--brand-experiment)" : "var(--background-modifier-hover)",
-        color: active ? "white" : "var(--text-normal)",
-        fontSize: "13px",
-    });
-
-    const cardWrap: React.CSSProperties = {
-        background: "var(--background-secondary)",
-        border: "1px solid var(--background-modifier-accent)",
-        borderRadius: "10px",
-        padding: "12px",
-        marginBottom: "10px",
-    };
-
-    return (
-        <ModalRoot {...modalProps} size={ModalSize.LARGE}>
-            <ModalHeader>
-                <Text variant="heading-lg/semibold" style={{ flex: 1 }}>🎭 Roleplay Profiles</Text>
-                <ModalCloseButton onClick={modalProps.onClose} />
-            </ModalHeader>
-
-            <ModalContent style={{ padding: "16px", overflowY: "auto" }}>
-                {/* Tabs */}
-                <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
-                    <button style={tabStyle(tab === "mine")} onClick={() => setTab("mine")}>
-                        My Characters ({data.myProfiles.length})
-                    </button>
-                    <button style={tabStyle(tab === "saved")} onClick={() => setTab("saved")}>
-                        Saved Profiles ({data.savedProfiles.length})
-                    </button>
-                </div>
-
-                {/* MY CHARACTERS */}
-                {tab === "mine" && (
-                    <>
-                        <Button
-                            onClick={() => openEditor()}
-                            color={Button.Colors.BRAND}
-                            style={{ marginBottom: "14px", width: "100%" }}
-                        >
-                            ✦ Create New Character
-                        </Button>
-
-                        {data.myProfiles.length === 0 && (
-                            <Text style={{ color: "var(--text-muted)", textAlign: "center", marginTop: "30px" }}>
-                                No characters yet — create your first one!
-                            </Text>
-                        )}
-
-                        {data.myProfiles.map(p => (
-                            <div key={p.id} style={cardWrap}>
-                                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
-                                    <div
-                                        style={{
-                                            width: "10px", height: "10px", borderRadius: "50%",
-                                            background: p.accentColor || "#7B68EE", flexShrink: 0,
-                                        }}
-                                    />
-                                    <span style={{ fontWeight: 600, fontSize: "14px", flex: 1, color: "var(--header-primary)" }}>
-                                        {p.name}
-                                    </span>
-                                    {data.activeProfileId === p.id && (
-                                        <span style={{
-                                            background: "var(--brand-experiment)",
-                                            color: "white",
-                                            fontSize: "10px",
-                                            padding: "2px 7px",
-                                            borderRadius: "999px",
-                                            fontWeight: 700,
-                                        }}>ACTIVE</span>
-                                    )}
-                                </div>
-                                <div style={{ color: "var(--text-muted)", fontSize: "12px", marginBottom: "8px" }}>
-                                    {[p.species, p.pronouns, p.age].filter(Boolean).join(" · ")}
-                                    {p.tags.length > 0 && (
-                                        <span style={{ marginLeft: "6px" }}>
-                                            {p.tags.map(t => `#${t}`).join(" ")}
-                                        </span>
-                                    )}
-                                </div>
-                                {p.description && (
-                                    <div style={{ fontSize: "12px", color: "var(--text-normal)", marginBottom: "8px", lineClamp: "2" }}>
-                                        {p.description.slice(0, 120)}{p.description.length > 120 ? "…" : ""}
-                                    </div>
-                                )}
-                                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                                    {data.activeProfileId !== p.id ? (
-                                        <Button size={Button.Sizes.SMALL} color={Button.Colors.GREEN} onClick={() => setActive(p.id)}>
-                                            Set Active
-                                        </Button>
-                                    ) : (
-                                        <Button size={Button.Sizes.SMALL} look={Button.Looks.OUTLINED} onClick={() => setActive(null)}>
-                                            Deactivate
-                                        </Button>
-                                    )}
-                                    <Button size={Button.Sizes.SMALL} onClick={() => openEditor(p)}>Edit</Button>
-                                    <Button size={Button.Sizes.SMALL} color={Button.Colors.RED} onClick={() => deleteProfile(p.id)}>Delete</Button>
-                                </div>
-                            </div>
-                        ))}
-                    </>
-                )}
-
-                {/* SAVED PROFILES FROM OTHERS */}
-                {tab === "saved" && (
-                    <>
-                        {data.savedProfiles.length === 0 && (
-                            <Text style={{ color: "var(--text-muted)", textAlign: "center", marginTop: "30px" }}>
-                                No saved profiles yet.<br />When other plugin users share a profile in chat, you can save it here.
-                            </Text>
-                        )}
-                        {data.savedProfiles.map((s, i) => (
-                            <div key={i} style={cardWrap}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                                    <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                                        From: <strong>{s.username}</strong> · Saved {new Date(s.savedAt).toLocaleDateString()}
-                                    </span>
-                                    <Button
-                                        size={Button.Sizes.SMALL}
-                                        color={Button.Colors.RED}
-                                        look={Button.Looks.LINK}
-                                        onClick={() => removeSaved(s.userId, s.profile.id)}
-                                    >Remove</Button>
-                                </div>
-                                <ProfileCard profile={s.profile} username={s.username} compact={settings.store.compactCards} />
-                            </div>
-                        ))}
-                    </>
-                )}
-            </ModalContent>
-        </ModalRoot>
-    );
-}
-
-// ─── Message Accessory: renders profile cards in chat ──────────
-
-function RPMessageAccessory({ message }: { message: any }) {
-    const extracted = extractProfile(message.content);
-    if (!extracted) return null;
-
-    const { profile, username } = extracted;
-    const me = getCurrentUser();
-    const isOwn = me?.id === message.author.id;
-
-    function handleSave() {
-        const next = getData();
-        const already = next.savedProfiles.find(
-            s => s.userId === message.author.id && s.profile.id === profile.id
-        );
-        if (already) { alert("Profile already saved!"); return; }
-        next.savedProfiles.push({
-            userId: message.author.id,
-            username: message.author.username,
-            profile,
-            savedAt: Date.now(),
-        });
-        saveData(next);
-        alert(`✅ Saved profile: ${profile.name}`);
-    }
-
-    return (
-        <ProfileCard
-            profile={profile}
-            username={username}
-            isOwn={isOwn}
-            compact={settings.store.compactCards}
-            onSave={isOwn ? undefined : handleSave}
-        />
-    );
-}
-
-// ─── Chat Bar Button ───────────────────────────────────────────
-
-function RPChatBarButton({ channelId }: { channelId: string }) {
+function RpChatBarButton() {
     const data = getData();
-    const activeProfile = data.myProfiles.find(p => p.id === data.activeProfileId);
-
+    const hasActive = data.activeProfileId != null;
     return (
-        <Tooltip text={activeProfile ? `Share: ${activeProfile.name}` : "Roleplay Profiles"}>
-            {({ onMouseEnter, onMouseLeave }: any) => (
-                <button
-                    onMouseEnter={onMouseEnter}
-                    onMouseLeave={onMouseLeave}
-                    style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        padding: "4px",
-                        borderRadius: "4px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: activeProfile ? (activeProfile.accentColor || "#7B68EE") : "var(--interactive-normal)",
-                        fontSize: "20px",
-                        lineHeight: 1,
-                        transition: "color 0.15s",
-                    }}
-                    onClick={() => {
-                        if (activeProfile) {
-                            // Quick-share active profile
-                            const user = getCurrentUser();
-                            const msg = buildShareMessage(activeProfile, user?.username ?? "Unknown");
-                            sendMessage(channelId, { content: msg });
-                        } else {
-                            openModal(p => <ProfileManagerModal modalProps={p} />);
-                        }
-                    }}
-                    onContextMenu={e => {
-                        e.preventDefault();
-                        openModal(p => <ProfileManagerModal modalProps={p} />);
-                    }}
-                    title="Left-click to share active profile · Right-click to manage profiles"
-                >
-                    🎭
-                </button>
-            )}
-        </Tooltip>
-    );
-}
-
-// ─── User Context Menu Patch ───────────────────────────────────
-
-const userCtxMenuPatch: NavContextMenuPatchCallback = (children, { user }: { user?: any }) => {
-    if (!user) return;
-    const data = getData();
-    const userSaved = data.savedProfiles.filter(s => s.userId === user.id);
-    if (userSaved.length === 0) return;
-
-    children.push(
-        <Menu.MenuSeparator key="rp-sep" />,
-        <Menu.MenuItem
-            key="rp-view"
-            id="rp-view-profiles"
-            label={`🎭 View RP Profiles (${userSaved.length})`}
+        <Button
+            look={Button.Looks.BLANK}
+            size={Button.Sizes.NONE}
+            tooltip="Character Profiles"
+            onClick={() => openModal(p => <ProfileManagerModal modalProps={p} />)}
+            style={{ opacity: hasActive ? 1 : 0.6, transition: "opacity 0.15s" }}
         >
-            {userSaved.map((s, i) => (
-                <Menu.MenuItem
-                    key={i}
-                    id={`rp-profile-${i}`}
-                    label={s.profile.name || "Unnamed"}
-                    action={() => openModal(p => (
-                        <ModalRoot {...p} size={ModalSize.MEDIUM}>
-                            <ModalHeader>
-                                <Text variant="heading-md/semibold" style={{ flex: 1 }}>
-                                    {s.profile.name} — {s.username}
-                                </Text>
-                                <ModalCloseButton onClick={p.onClose} />
-                            </ModalHeader>
-                            <ModalContent style={{ padding: "16px" }}>
-                                <ProfileCard profile={s.profile} username={s.username} />
-                            </ModalContent>
-                        </ModalRoot>
-                    ))}
-                />
-            ))}
-        </Menu.MenuItem>
+            <span style={{ fontSize: "20px" }}>🎭</span>
+        </Button>
     );
-};
+}
 
 // ══════════════════════════════════════════════════════════════
-// PLUGIN DEFINITION
+// PLUGIN CORE
 // ══════════════════════════════════════════════════════════════
+
+let avatarPatch: (() => void) | undefined;
 
 export default definePlugin({
     name: "RoleplayProfiles",
-    description: "Create multiple RP character profiles, share them in chat, and view other plugin users' profiles as formatted cards.",
-    authors: [
-        { id: 0n, name: "YourName" }, // ← replace with your Devs entry
-    ],
-    dependencies: ["ChatButtonsAPI", "MessageAccessoriesAPI"],
+    description: "Manage multiple RP profiles, render character cards in chat, and override your avatar client-side.",
+    authors: [{ name: "mg.pie", id: 0n }],
+
+    onLoad() {
+        // --- 1. Client-Side Avatar Override (via monkeyPatch instead of prototype mutation) ---
+        const UserStore = findByProps("getCurrentUser", "getUser");
+        if (UserStore) {
+            avatarPatch = instead("getAvatarURL", UserStore, function (args, original) {
+                const data = getData();
+                const active = data.myProfiles.find(p => p.id === data.activeProfileId);
+                // @ts-ignore – `this` is the User object
+                if (this?.id === getCurrentUser()?.id && active?.avatarUrl) return active.avatarUrl;
+                return original.apply(this, args);
+            });
+        }
+
+        // --- 2. Message Accessory (Card Rendering) ---
+        addMessageAccessory(ACCESSORY_KEY, msg => {
+            const extracted = extractProfile(msg.content);
+            if (!extracted) return null;
+            const currentUser = getCurrentUser();
+            const isOwn = msg.author.id === currentUser?.id;
+
+            return (
+                <ProfileCard
+                    profile={extracted.profile}
+                    username={extracted.username}
+                    compact={settings.store.compactCards}
+                    isOwn={isOwn}
+                    onSave={isOwn ? undefined : () => {
+                        const alreadySaved = getData().savedProfiles.some(s => s.profile.id === extracted.profile.id);
+                        if (alreadySaved) {
+                            Toasts.show({ message: "Already in your library.", type: Toasts.Type.MESSAGE });
+                            return;
+                        }
+                        updateData(d => {
+                            d.savedProfiles.push({
+                                userId: msg.author.id,
+                                username: extracted.username,
+                                profile: extracted.profile,
+                                savedAt: Date.now(),
+                            });
+                        });
+                        Toasts.show({ message: `Saved "${extracted.profile.name}" to library!`, type: Toasts.Type.SUCCESS });
+                    }}
+                    onShare={isOwn ? () => {
+                        const chan = findByProps("getChannelId")?.getChannelId?.();
+                        if (!chan) return;
+                        const msg = buildShareMessage(extracted.profile, getCurrentUser()?.username ?? "Unknown");
+                        findByProps("sendMessage")?.sendMessage(chan, { content: msg });
+                    } : undefined}
+                />
+            );
+        });
+
+        // --- 3. Chat Bar Button ---
+        addChatBarButton("rp-profiles", RpChatBarButton);
+    },
+
+    onUnload() {
+        avatarPatch?.();
+        removeMessageAccessory(ACCESSORY_KEY);
+        removeChatBarButton("rp-profiles");
+    },
+
     settings,
-
-    start() {
-        // Register the chat bar button
-        addChatBarButton("RoleplayProfiles", RPChatBarButton);
-
-        // Register the message accessory (renders profile cards in chat)
-        addMessageAccessory("RoleplayProfiles", (props: { message: any }) => (
-            <RPMessageAccessory message={props.message} />
-        ), 1 /* priority */);
-
-        // Context menu on users
-        addContextMenuPatch("user-context", userCtxMenuPatch);
-        addContextMenuPatch("user-profile-actions", userCtxMenuPatch);
-    },
-
-    stop() {
-        removeChatBarButton("RoleplayProfiles");
-        removeMessageAccessory("RoleplayProfiles");
-        removeContextMenuPatch("user-context", userCtxMenuPatch);
-        removeContextMenuPatch("user-profile-actions", userCtxMenuPatch);
-    },
 });
