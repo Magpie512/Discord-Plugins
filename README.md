@@ -1,142 +1,137 @@
-> **Disclaimer:**  
-> Modifying Discord is against Discord’s Terms of Service. I do not advise doing so. That being said,
-> Use Vencord at your own risk.  
-> This guide only covers the official, open‑source build process.
+> **Disclaimer:**
+> Modifying Discord is against Discord’s Terms of Service. I do not advise doing so. That being said, Use Vencord at your own risk.
+> This guide only covers the official, open-source build process.
 
-All of this code is from my educational journey and once again I do not condone breaking any Tos this is just TSX mod application to prove i actually can interpret already made code and make my own >:D
+All of this code is from my educational journey and once again I do not condone breaking any ToS. This is just TSX mod application to prove I actually can interpret already made code and make my own >:D
 
 ### Plugin List
 
-- **Popout User Video**
-  Allowing users to pop out streams singularly. Ideal for Edaters. #Honest
+* **Popout User Video**
+Allowing users to pop out streams singularly. Ideal for Edaters. #Honest
+
+---
 
 ### Prerequisites (All Platforms)
 
-Before building Vencord, install:
+Before building, ensure you have:
 
-- **Git**
-- **Node.js 18+**
-- **pnpm** (recommended by Vencord)
+* **Git**
+* **Node.js 18+**
+* **pnpm** (Required for Vencord/Vesktop builds)
 
-## Windows Tutorial
+---
 
-1. Install pnpm (if you don't have it):
+## 1. Customizing Vencord (The Engine)
 
-```sh
-npm install -g pnpm
-```
+Since Vesktop relies on Vencord for plugins, you must first build a version of Vencord that includes your homemade files.
 
-2. Clone the repository:
+### Step A: Setup
 
-```sh
-git clone https://github.com/Vencord/Vencord.git
-cd Vencord
-```
-
-3. Install dependencies:
-
-```sh
-pnpm install
-```
-
-4. Build Vencord:
-
-```sh
-pnpm build
-```
-
-5. Inject
-```sh
-pnpm inject
-```
-
-## MacOS Tutorial (Untested)
-
-1. Using Homebrew
-
-```sh
-brew install git node
-npm install -g pnpm
-```
-
-2. Clone the repository:
-
+1. **Clone the repository:**
 ```sh
 git clone https://github.com/Vencord/Vencord.git
 cd Vencord
-```
-
-3. Install dependencies:
-
-```sh
 pnpm install
+
 ```
 
-4. Build Vencord
 
+
+### Step B: Adding Homemade Plugins
+
+2. **Add your code:**
+Navigate to `src/userplugins`. Create this folder if it does not exist. Place your plugin folder (e.g., `PopoutVideo`) inside.
+3. **Build:**
 ```sh
 pnpm build
-```
 
-5. Inject into Discord:
-
-```sh
-pnpm inject
-```
-
-6. Updating
-
-```sh
-git pull
-pnpm build
-pnpm inject
 ```
 
 
-## Linux Tutorial (Untested)
 
-Prerequisite:
+---
+
+## 2. Building & Linking Vesktop
+
+To actually use these plugins in the Vesktop client, follow the steps for your specific OS.
+
+### Windows
+
+1. **Clone and Install:**
 
 ```sh
-sudo apt update
-sudo apt install git nodejs npm
-npm install -g pnpm
+   git clone https://github.com/Vencord/Vesktop.git
+   cd Vesktop
+   pnpm install
+
 ```
 
-1. Clone the repository:
+2. **Point to your Vencord:**
+Vesktop usually fetches Vencord automatically. To use your **homemade** build, you can use `pnpm link`:
+* In your **Vencord** folder: `pnpm link --global`
+* In your **Vesktop** folder: `pnpm link --global vencord`
+
+
+3. **Build & Launch:**
 
 ```sh
-git clone https://github.com/Vencord/Vencord.git
-cd Vencord
+   pnpm build
+   pnpm start
+
 ```
 
-2. Install dependencies
+### MacOS (Untested)
+
+1. **Install via Homebrew:**
 
 ```sh
-pnpm install
+   brew install git node
+   npm install -g pnpm
+
 ```
 
-3. Build Vencord:
+2. **Clone and Build:**
 
 ```sh
-pnpm build
+   git clone https://github.com/Vencord/Vesktop.git
+   cd Vesktop
+   pnpm install
+   pnpm build
+   pnpm start
+
 ```
 
-4. Inject Vencord (Two options):
+### Linux (Untested)
+
+1. **Install Dependencies:**
+
 ```sh
-pnpm inject
+   sudo apt update
+   sudo apt install git nodejs npm
+   npm install -g pnpm
+
 ```
 
-4. If you installed discord via flatpak
+2. **Clone and Build:**
 
 ```sh
-pnpm inject --flatpak
+   git clone https://github.com/Vencord/Vesktop.git
+   cd Vesktop
+   pnpm install
+   pnpm build
+
 ```
 
-5. Updating 
+3. **Flatpak Note:** If using the Flatpak version of Discord, remember that Vesktop acts as a standalone client and does not require the `pnpm inject --flatpak` command used by the standard Vencord installer.
 
-```sh
-git pull
-pnpm build
-pnpm inject
+---
+
+## 3. Updating & Maintenance
+
+When you make changes to your TSX plugin code:
+
+1. Go to your **Vencord** directory.
+2. Run `pnpm build` to recompile the plugin.
+3. Restart **Vesktop**. Your changes will be reflected immediately upon the next app launch.
+
 ```
