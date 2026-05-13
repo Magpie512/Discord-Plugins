@@ -133,5 +133,3 @@ When you make changes to your TSX plugin code:
 1. Go to your **Vencord** directory.
 2. Run `pnpm build` to recompile the plugin.
 3. Restart **Vesktop**. Your changes will be reflected immediately upon the next app launch.
-
-```
